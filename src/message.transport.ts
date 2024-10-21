@@ -60,9 +60,10 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
 
     #handler?: (...args: unknown[]) => Promise<unknown>;
     #handlerMap: Map<string, (...args: unknown[]) => Promise<unknown>> = new Map();
+
+    #emitter = new EventEmitter();
     #responseEmitter = new EventEmitter();
     #rejectionEmitter = new EventEmitter();
-    #emitter: EventEmitter = new EventEmitter();
 
     #preparedTypes: string[] = [];
     #preparedTypesEmitter = new EventEmitter();
@@ -183,6 +184,10 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
      * @param channel 전송 채널
      */
     constructor(channel: TransportChannel | WebSocket | RTCDataChannel) {
+        this.#responseEmitter.setMaxListeners(0);
+        this.#rejectionEmitter.setMaxListeners(0);
+        this.#preparedTypesEmitter.setMaxListeners(0);
+
         this.#channel = channel;
         if ('binaryType' in channel && channel.binaryType !== 'arraybuffer') {
             channel.binaryType = 'arraybuffer';
@@ -246,6 +251,14 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
         }
     }
 
+    setMaxListeners(n: number): this {
+        this.#emitter.setMaxListeners(n);
+        return this;
+    }
+
+    getMaxListeners(): number {
+        return this.#emitter.getMaxListeners();
+    }
 
     /**
      * 메시지 종류에 대한 핸들러가 등록되지 않은 모든 메시지를 처리하기 위한 범용 핸들러를 등록합니다.
@@ -337,7 +350,10 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
         if (this.#preparedTypes.includes(type as string)) {
             return;
         }
-        await new Promise<void>(resolve => this.#preparedTypesEmitter.once(type as string, resolve));
+        await new Promise<void>(resolve => {
+            this.#preparedTypesEmitter.once('*', resolve);
+            this.#preparedTypesEmitter.once(type as string, resolve);
+        });
     }
 
     /**
