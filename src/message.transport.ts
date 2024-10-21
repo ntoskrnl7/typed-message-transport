@@ -22,8 +22,22 @@ type PartialSend = MessageHeader<'partial-send'> & {
     chunk: Uint8Array;
 };
 
+/**
+ * 데이터 송/수신을 위한 채널 인터페이스 입니다.
+ */
 export interface TransportChannel {
+    /**
+     * 데이터를 전송할때 구현할 메서드
+     *
+     * @param data MessageTransport에서 전송할 데이터
+     */
     send(data: ArrayBuffer): void;
+
+    /**
+     * 데이터를 받기위한 핸들러를 등록하는 기능을 구현할 메서드.
+     *
+     * @param onmessage MessageTransport에서 등록하는 핸들러
+     */
     onMessage(onmessage: (event: MessageEvent<ArrayBuffer>) => any): void;
 }
 
@@ -163,6 +177,11 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
         sendChunk();
     }
 
+    /**
+     * MessageTransport 객체를 생성합니다.
+     *
+     * @param channel 전송 채널
+     */
     constructor(channel: TransportChannel | WebSocket | RTCDataChannel) {
         this.#channel = channel;
         if ('binaryType' in channel && channel.binaryType !== 'arraybuffer') {
@@ -279,7 +298,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
     }
 
     /**
-     * 원격지(서버)로 메시지를 전송합니다.
+     * 메시지를 전송합니다. (상대측에서 메시지를 받을 준비가 될때까지 대기합니다.)
      *
      * @param type 메시지 종류.
      * @param args 메시지 내용.
@@ -289,7 +308,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
     }
 
     /**
-     * 원격지(서버)로 메시지를 전송 후 응답을 반환받습니다.
+     * 메시지를 전송 후 응답을 반환받습니다. (상대측에서 메시지를 받을 준비가 될때까지 대기합니다.)
      *
      * @param type 메시지 종류.
      * @param args 메시지 내용.
@@ -307,7 +326,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
     }
 
     /**
-     * 핸들러가 등록될때까지 대기합니다.
+     * 상대측에서 메시지를 받을 준비가 될때(핸들러가 등록될 때)까지 대기합니다.
      *
      * @param type 핸들러 메시지 종류
      */
@@ -322,7 +341,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
     }
 
     /**
-     * 원격지(서버)로 메시지를 전송합니다.
+     * 메시지를 전송합니다.
      *
      * @param type 메시지 종류.
      * @param args 메시지 내용.
@@ -332,7 +351,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
     }
 
     /**
-     * 원격지(서버)로 메시지를 전송 후 응답을 반환받습니다.
+     * 메시지를 전송 후 응답을 반환받습니다.
      *
      * @param type 메시지 종류.
      * @param args 메시지 내용.
