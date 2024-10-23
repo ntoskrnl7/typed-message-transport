@@ -123,7 +123,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
             return this.#channel.send(data);
         }
 
-        if (this.#channel instanceof RTCDataChannel) {
+        if (RTCDataChannel && this.#channel instanceof RTCDataChannel) {
             this.#channel.bufferedAmountLowThreshold = CHUNK_SIZE;
         }
 
@@ -157,7 +157,7 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
 
                 if ('bufferedAmount' in this.#channel && this.#channel.bufferedAmount > CHUNK_SIZE) {
                     if (loggingEnabled()) console.log(`bufferedAmount: ${this.#channel.bufferedAmount}`);
-                    if (this.#channel instanceof RTCDataChannel) {
+                    if (RTCDataChannel && this.#channel instanceof RTCDataChannel) {
                         this.#channel.addEventListener('bufferedamountlow', sendChunk, { once: true });
                     } else {
                         const channel = this.#channel;
