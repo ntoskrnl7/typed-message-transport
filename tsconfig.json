@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "target": "ES2015",
-        "module": "ESNext",
+        "module": "CommonJS",
         "declaration": true,
         "declarationDir": ".",
         "outDir": ".",
@@ -9,7 +9,6 @@
         "strict": true,
         "moduleResolution": "Node",
         "esModuleInterop": true,
-        "resolveJsonModule": true,
         "skipLibCheck": true
     },
     "include": [
