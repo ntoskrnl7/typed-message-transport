@@ -178,17 +178,17 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
         sendChunk();
     }
 
-    /**
-     * MessageTransport 객체를 생성합니다.
-     *
-     * @param channel 전송 채널
-     */
-    constructor(channel: TransportChannel | WebSocket | RTCDataChannel) {
-        this.#responseEmitter.setMaxListeners(0);
-        this.#rejectionEmitter.setMaxListeners(0);
-        this.#preparedTypesEmitter.setMaxListeners(0);
+    get channel() {
+        return this.#channel;
+    }
 
-        this.#channel = channel;
+    set channel(newChannel: TransportChannel | WebSocket | RTCDataChannel) {
+        this.#channel = newChannel;
+        this.#initialize();
+    }
+
+    #initialize() {
+        const channel = this.#channel;
         if ('binaryType' in channel && channel.binaryType !== 'arraybuffer') {
             channel.binaryType = 'arraybuffer';
         }
@@ -249,6 +249,20 @@ export class MessageTransport<SendMessageMap, RecvMessageMap> {
         } else {
             channel.onMessage(onmessage);
         }
+    }
+
+    /**
+     * MessageTransport 객체를 생성합니다.
+     *
+     * @param channel 전송 채널
+     */
+    constructor(channel: TransportChannel | WebSocket | RTCDataChannel) {
+        this.#responseEmitter.setMaxListeners(0);
+        this.#rejectionEmitter.setMaxListeners(0);
+        this.#preparedTypesEmitter.setMaxListeners(0);
+
+        this.#channel = channel;
+        this.#initialize();
     }
 
     setMaxListeners(n: number): this {
