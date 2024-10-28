@@ -2,7 +2,7 @@ import SuperJSON from 'superjson';
 import { Buffer as NodeBuffer } from 'buffer';
 import { Buffer } from 'buffer/';
 
-function toSerializable(obj: object | null, depth?: number): object | null {
+export function toSerializable(obj: object | null, depth?: number): object | null {
     const toObjectI = (obj: object | null, current: number) => {
         if (obj === null) {
             return null;
@@ -104,5 +104,7 @@ SuperJSON.registerCustom<Uint8Array, number[]>(
     },
     'Uint8Array'
 );
+
+export { SuperJSON };
 
 export default SuperJSON;

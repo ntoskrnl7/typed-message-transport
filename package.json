@@ -1,6 +1,6 @@
 {
   "name": "typed-message-transport",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "scripts": {
     "build": "tsc && node remove-export.js && esbuild src/superJSON.ts --bundle --outfile=superJSON.js --platform=node && esbuild src/superJSON.ts --bundle --outfile=window.SuperJSON.js --platform=browser --format=iife --global-name=SuperJSON --minify",
     "prepublishOnly": "npm run build"
