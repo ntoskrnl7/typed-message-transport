@@ -71,7 +71,12 @@ export function toSerializable(obj: object | null, depth?: number): object | nul
 
 SuperJSON.registerCustom<Event, string>(
     {
-        isApplicable: (v): v is Event => v instanceof Event,
+        isApplicable: (v): v is Event => {
+            const EventConstructor = typeof window !== 'undefined' && typeof window.UIEvent !== 'undefined'
+                ? Object.getPrototypeOf(UIEvent.prototype).constructor
+                : Event;
+            return v instanceof EventConstructor;
+        },
         serialize: (v) => SuperJSON.stringify(toSerializable(v)),
         deserialize: (v) => SuperJSON.parse(v),
     },
