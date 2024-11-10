@@ -3,7 +3,7 @@ import { Buffer as NodeBuffer } from 'buffer';
 import { Buffer } from 'buffer/';
 
 export function toSerializable(obj: object | null, depth?: number): object | null {
-    const toObjectI = (obj: object | null, current: number) => {
+    const toSerializableI = (obj: object | null, current: number) => {
         if (obj === null) {
             return null;
         }
@@ -41,7 +41,7 @@ export function toSerializable(obj: object | null, depth?: number): object | nul
                     break;
                 case 'object':
                     if (value) {
-                        ret[key] = toObjectI(value, current + 1);
+                        ret[key] = toSerializableI(value, current + 1);
                     }
                     break;
                 default:
@@ -56,7 +56,7 @@ export function toSerializable(obj: object | null, depth?: number): object | nul
                     break;
                 case 'object':
                     if (value) {
-                        ret[key] = toObjectI(value, current + 1);
+                        ret[key] = toSerializableI(value, current + 1);
                     }
                     break;
                 default:
@@ -66,17 +66,23 @@ export function toSerializable(obj: object | null, depth?: number): object | nul
         }
         return ret;
     };
-    return toObjectI(obj, 1);
+    return toSerializableI(obj, 1);
+}
+
+function isEventObject(obj: object) {
+    let currentProto = Object.getPrototypeOf(obj);
+    while (currentProto) {
+        if (currentProto.constructor.name === 'Event') {
+            return true;
+        }
+        currentProto = Object.getPrototypeOf(currentProto);
+    }
+    return false;
 }
 
 SuperJSON.registerCustom<Event, string>(
     {
-        isApplicable: (v): v is Event => {
-            const EventConstructor = typeof window !== 'undefined' && typeof window.UIEvent !== 'undefined'
-                ? Object.getPrototypeOf(UIEvent.prototype).constructor
-                : Event;
-            return v instanceof EventConstructor;
-        },
+        isApplicable: (v): v is Event => typeof v === 'object' && isEventObject(v),
         serialize: (v) => SuperJSON.stringify(toSerializable(v)),
         deserialize: (v) => SuperJSON.parse(v),
     },
