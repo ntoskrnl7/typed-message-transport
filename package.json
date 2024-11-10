@@ -1,21 +1,27 @@
 {
   "name": "typed-message-transport",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "scripts": {
-    "build": "tsc && node remove-export.js && esbuild src/superJSON.ts --bundle --outfile=superJSON.js --platform=node && esbuild src/superJSON.ts --bundle --outfile=window.SuperJSON.js --platform=browser --format=iife --global-name=SuperJSON --minify",
+    "build": "tsc --target ES2015 && node remove-export.js && esbuild src/superJSON.ts --bundle --target=ES2015 --outfile=superJSON.js --platform=node && esbuild src/superJSON.ts --bundle --target=ES2015 --outfile=window.SuperJSON.js --platform=browser --format=iife --global-name=SuperJSON --minify",
+    "test": "jest",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "buffer": "^6.0.3",
     "events": "^3.3.0",
+    "flatted": "^3.3.1",
     "snappyjs": "^0.7.0",
     "superjson": "^2.2.1"
   },
   "devDependencies": {
-    "@types/node": "^22.7.7",
+    "@types/chai": "^5.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.9.0",
     "@types/snappyjs": "^0.7.1",
     "esbuild": "^0.24.0",
-    "typescript": "^5.6.2"
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
   },
   "files": [
     "*.js",
