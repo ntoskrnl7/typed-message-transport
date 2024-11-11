@@ -69,7 +69,7 @@ export interface MessageSerializer {
      * @param data The serialized string to be parsed.
      * @returns A tuple containing the message header and the corresponding data.
      */
-    parse(data: string): [MessageHeader<string>, ...unknown[]];
+    parse(data: string): [MessageHeader<string>, ...MessageRequestType];
 }
 
 /**
@@ -92,6 +92,29 @@ export interface TransportChannel {
 }
 
 /**
+ * Represents the expected types for request arguments in a message schema.
+ *
+ * - Each element in the array can be either `unknown` or `undefined`.
+ * - `unknown` allows any type, making it flexible to accept various argument types.
+ * - `undefined` indicates that an argument may be optional or not provided.
+ *
+ * This array type enables flexibility in defining the arguments for each message type.
+ */
+export type MessageRequestType = (unknown | undefined)[];
+
+/**
+ * Represents the possible types for a response value in a message schema.
+ *
+ * - `unknown`: Allows any type, providing flexibility for various response types.
+ * - `void`: Indicates that no response is expected for certain message types.
+ * - `undefined`: Specifies that a response may be optional or not defined.
+ *
+ * This type union allows the flexibility needed to represent different response scenarios
+ * within the message schema.
+ */
+export type MessageResponseType = unknown | void | undefined;
+
+/**
  * Defines the schema for messages exchanged between client and server.
  * The schema specifies the expected structure of requests and responses for each message type.
  *
@@ -110,8 +133,8 @@ export interface TransportChannel {
  */
 export type MessageSchema = {
     [key: string]: {
-        request: unknown[];  // Arguments expected in the request for this message type
-        response?: unknown;   // Expected response type for this message type
+        request: MessageRequestType;              // Arguments expected in the request for this message type
+        response?: MessageResponseType;  // Expected response type for this message type
     };
 };
 
@@ -137,13 +160,13 @@ export type Type<MessageMap extends MessageSchema> = Exclude<keyof MessageMap, n
  * @example
  * type RequestArgs = Request<'message-type', MessageMap>; // RequestArgs would be `[]` (an empty array) in this case
  */
-export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { request: infer Req } ? Req extends unknown[] ? Req : [] : never;
+export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { request: infer Req } ? Req extends MessageRequestType ? Req : [] : never;
 
 /**
  * A type that extracts the response type for a given message type `T` from the `MessageMap`.
  *
  * If the message type `T` has a `response` field, the corresponding type is inferred and returned.
- * If no `response` field is found, it defaults to `unknown`.
+ * If no `response` field is found, it defaults to `void`.
  *
  * @param T - A specific message type.
  * @param MessageMap - A map of message types and their corresponding request/response structures.
@@ -151,7 +174,7 @@ export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema
  * @example
  * type ResponseType = Response<'message-type', MessageMap>; // ResponseType would be `string` in this case
  */
-export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { response: infer Res } ? Res : unknown;
+export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { response: infer Res } ? Res : void;
 
 /**
  * A type for a listener function that handles a specific message type `T`.
@@ -215,13 +238,13 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * A generic handler that processes incoming messages. This handler is invoked when no specific handler
      * is set for a particular message type.
      */
-    #handler?: (...args: unknown[]) => Promise<unknown>;
+    #handler?: (...args: MessageRequestType) => Promise<MessageResponseType>;
 
     /**
      * A map of message types to their corresponding handlers. Each message type has an associated handler function
      * that is called when a message of that type is received.
      */
-    #handlerMap: Map<string, (...args: unknown[]) => Promise<unknown>> = new Map();
+    #handlerMap: Map<string, (...args: MessageRequestType) => Promise<MessageResponseType>> = new Map();
 
     /**
      * Event emitter used to emit events for specific message types.
@@ -283,7 +306,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @param message A partial message or a full message.
      * @returns The reconstructed message if all chunks are received, or `undefined` if more chunks are expected.
      */
-    #processPartialMessage = (message: PartialSendInit | PartialSend | [MessageHeader<string>, ...unknown[]]): [MessageHeader<string>, ...unknown[]] | void => {
+    #processPartialMessage = (message: PartialSendInit | PartialSend | [MessageHeader<string>, ...MessageRequestType]): [MessageHeader<string>, ...MessageRequestType] | void => {
         if (Array.isArray(message)) {
             return message;
         }
@@ -321,7 +344,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
             }
             return;
         }
-        return message as unknown as [MessageHeader<string>, ...unknown[]];
+        return message as unknown as [MessageHeader<string>, ...MessageRequestType];
     }
 
     /**
@@ -330,7 +353,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @param args The message and its parameters.
      * @param callId The unique call ID for the message.
      */
-    #sendRaw(args: [MessageHeader<string>, ...unknown[]], callId?: CallId) {
+    #sendRaw(args: [MessageHeader<string>, ...MessageRequestType], callId?: CallId) {
         const data = compress(Buffer.from(this.#serializer.stringify(args)));
         const CHUNK_SIZE = 16 * 1024;
 
@@ -555,10 +578,10 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
 
     setHandler<T extends Type<RecvMessageMap>>(typeOrHandler: T | Handler<T, RecvMessageMap>, handler: TypeHandler<T, RecvMessageMap> | void) {
         if (typeof typeOrHandler === 'function') {
-            this.#handler = typeOrHandler as (...args: unknown[]) => Promise<unknown>;
+            this.#handler = typeOrHandler as (...args: MessageRequestType) => Promise<MessageResponseType>;
             this.#sendRaw([{ type: 'handler-added' }, '*']);
         } else {
-            this.#handlerMap.set(typeOrHandler as string, handler as (...args: unknown[]) => Promise<unknown>);
+            this.#handlerMap.set(typeOrHandler as string, handler as (...args: MessageRequestType) => Promise<MessageResponseType>);
             this.#sendRaw([{ type: 'handler-added' }, typeOrHandler as string]);
         }
         return this;
@@ -574,7 +597,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @returns The current instance of `MessageTransport` for method chaining.
      */
     on<T extends Type<RecvMessageMap>>(type: T, listener: Listener<T, RecvMessageMap>) {
-        this.#emitter.on(type as string, listener as (...args: unknown[]) => void);
+        this.#emitter.on(type as string, listener as (...args: MessageRequestType) => void);
         this.#sendRaw([{ type: 'handler-added' }, type as string]);
         return this;
     }
@@ -589,7 +612,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @returns The current instance of `MessageTransport` for method chaining.
      */
     once<T extends Type<RecvMessageMap>>(type: T, listener: Listener<T, RecvMessageMap>) {
-        this.#emitter.once(type as string, listener as (...args: unknown[]) => void);
+        this.#emitter.once(type as string, listener as (...args: MessageRequestType) => void);
         this.#sendRaw([{ type: 'handler-added' }, type as string]);
         return this;
     }
@@ -603,7 +626,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @returns The current instance of `MessageTransport` for method chaining.
      */
     off<T extends Type<RecvMessageMap>>(type: T, listener: Listener<T, RecvMessageMap>) {
-        this.#emitter.off(type as string, listener as (...args: unknown[]) => void);
+        this.#emitter.off(type as string, listener as (...args: MessageRequestType) => void);
         return this;
     }
 

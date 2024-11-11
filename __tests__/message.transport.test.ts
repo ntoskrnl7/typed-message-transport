@@ -9,6 +9,13 @@ type Test1MessageMap = {
         request: [a: string, b: string];
         response: { success: boolean };
     };
+    'test1-complex-message': {
+        request: [type: 'type1', b: string];
+        response: { success: boolean };
+    } | {
+        request: [type: 'type2', b: number, c: number];
+        response: void;
+    };
 };
 
 type Test2MessageMap = {
@@ -17,7 +24,7 @@ type Test2MessageMap = {
     };
 };
 
-describe('MessageTransport', () => {
+describe('MessageTransport send', () => {
     it('should send a message and wait for a response using sendAndWait()', async () => {
         const { port1, port2 } = new MessageChannel();
         try {
@@ -55,17 +62,34 @@ describe('MessageTransport', () => {
             });
             await tp2.sendAndWait('test1-message', 'arg1', 'arg2');
 
+            tp1.setHandler('test1-complex-message', async (type, ...args) => {
+                switch (type) {
+                    case 'type1':
+                        expect(args[0]).toEqual('test');
+                        return { success: true }
+                    case 'type2':
+                        expect(args[0]).toEqual(10);
+                        expect(args[1]).toEqual(20);
+                        return;
+                }
+            });
+
             tp2.setHandler('test2-message', async (a, b) => {
                 expect(a).toEqual(10);
                 expect(b).toEqual(20);
             });
             await tp1.sendAndWait('test2-message', 10, 20);
+
+            await tp2.sendAndWait('test1-complex-message', 'type1', 'test');
+            await tp2.sendAndWait('test1-complex-message', 'type2', 10, 20);
         } finally {
             port1.close();
             port2.close();
         }
     });
+});
 
+describe('MessageTransport serializer', () => {
     it('JSON', async () => {
         const { port1, port2 } = new MessageChannel();
         try {
