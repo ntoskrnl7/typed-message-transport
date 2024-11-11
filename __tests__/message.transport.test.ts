@@ -1,4 +1,5 @@
 import { MessageTransport, TransportChannel } from '..';
+import SuperJSON from '../superJSON';
 import { parse, stringify } from 'flatted';
 
 const Flatted = { parse, stringify };
@@ -76,6 +77,25 @@ describe('MessageTransport', () => {
                 send(data: ArrayBuffer) { port2.postMessage(data); },
                 onMessage(onmessage) { port2.onmessage = onmessage; }
             }, JSON);
+            tp1.setHandler('test1-message', async () => ({ success: true }));
+            expect(await tp2.sendAndWait('test1-message', 'arg1', 'arg2')).toEqual({ success: true });
+        } finally {
+            port1.close();
+            port2.close();
+        }
+    });
+
+    it('SuperJSON', async () => {
+        const { port1, port2 } = new MessageChannel();
+        try {
+            const tp1 = new MessageTransport<Test2MessageMap, Test1MessageMap>({
+                send: MessagePort.prototype.postMessage.bind(port1),
+                onMessage: MessagePort.prototype.addEventListener.bind(port1, 'message')
+            } as TransportChannel, SuperJSON);
+            const tp2 = new MessageTransport<Test1MessageMap, Test2MessageMap>({
+                send(data: ArrayBuffer) { port2.postMessage(data); },
+                onMessage(onmessage) { port2.onmessage = onmessage; }
+            }, SuperJSON);
             tp1.setHandler('test1-message', async () => ({ success: true }));
             expect(await tp2.sendAndWait('test1-message', 'arg1', 'arg2')).toEqual({ success: true });
         } finally {
