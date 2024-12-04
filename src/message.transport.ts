@@ -244,42 +244,42 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * A map of message types to their corresponding handlers. Each message type has an associated handler function
      * that is called when a message of that type is received.
      */
-    #handlerMap: Map<string, (...args: MessageRequestType) => Promise<MessageResponseType>> = new Map();
+    readonly #handlerMap: Map<string, (...args: MessageRequestType) => Promise<MessageResponseType>> = new Map();
 
     /**
      * Event emitter used to emit events for specific message types.
      * Used to notify listeners when a message of a particular type is received.
      */
-    #emitter = new EventEmitter();
+    readonly #emitter = new EventEmitter();
 
     /**
      * Event emitter specifically for handling responses to messages that have been sent.
      * It listens for responses related to a specific `callId`.
      */
-    #responseEmitter = new EventEmitter();
+    readonly #responseEmitter = new EventEmitter();
 
     /**
      * Event emitter for handling error or rejection messages that occur during message processing.
      * It listens for errors and notifies listeners with the provided error message.
      */
-    #rejectionEmitter = new EventEmitter();
+    readonly #rejectionEmitter = new EventEmitter();
 
     /**
      * A list of message types that are considered "prepared" and ready for processing.
      * This is used to ensure that handlers are only added once for each message type.
      */
-    #preparedTypes: string[] = [];
+    readonly #preparedTypes: string[] = [];
 
     /**
      * Event emitter used to notify when message types are "prepared" and ready for processing.
      */
-    #preparedTypesEmitter = new EventEmitter();
+    readonly #preparedTypesEmitter = new EventEmitter();
 
     /**
      * Serializer used to convert messages to and from their string representation for transmission.
      * It can be customized (e.g., to use SuperJSON) for more advanced serialization needs.
      */
-    #serializer: MessageSerializer;
+    readonly #serializer: MessageSerializer;
 
     /**
      * A map that stores partial messages that are being transmitted in chunks.
@@ -287,7 +287,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * and the chunks that have been received so far. This is used for reconstructing large messages
      * that are sent in multiple parts.
      */
-    #partialMessageMap = new Map<CallId, { totalLength: number, receivedLength: number, chunks: Uint8Array[] }>();
+    readonly #partialMessageMap = new Map<CallId, { totalLength: number, receivedLength: number, chunks: Uint8Array[] }>();
 
     /**
      * Generates a unique call ID by combining a sequence number with a random value.
@@ -306,12 +306,12 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @param message A partial message or a full message.
      * @returns The reconstructed message if all chunks are received, or `undefined` if more chunks are expected.
      */
-    #processPartialMessage = (message: PartialSendInit | PartialSend | [MessageHeader<string>, ...MessageRequestType]): [MessageHeader<string>, ...MessageRequestType] | void => {
+    #processPartialMessage(message: PartialSendInit | PartialSend | [MessageHeader<string>, ...MessageRequestType]): [MessageHeader<string>, ...MessageRequestType] | void {
         if (Array.isArray(message)) {
             return message;
         }
         const { type, callId } = message;
-        if (callId && type && type.startsWith('partial-send')) {
+        if (callId && type?.startsWith('partial-send')) {
             if (message.type === 'partial-send-init') {
                 this.#partialMessageMap.set(callId, {
                     totalLength: message.totalLength,
@@ -443,8 +443,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                     } else if (type === 'rejection-error') {
                         if (callId) {
                             this.#rejectionEmitter.emit(callId, ...args);
-                        } else {
-                            if (loggingEnabled()) console.warn(`Rejection error message is invalid: 'callId' is missing`, message);
+                        } else if (loggingEnabled()) {
+                            console.warn(`Rejection error message is invalid: 'callId' is missing`, message);
                         }
                     } else if (type) {
                         // Triggers events that do not return results such as `on` or `once`
@@ -473,8 +473,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                         if (loggingEnabled()) console.log(callId, ...args);
                         if (callId) {
                             this.#responseEmitter.emit(callId, ...args);
-                        } else {
-                            if (loggingEnabled()) console.warn(`Response message is invalid: 'callId' is missing`, message);
+                        } else if (loggingEnabled()) {
+                            console.warn(`Response message is invalid: 'callId' is missing`, message);
                         }
                     }
                 } catch (error) {
@@ -644,7 +644,9 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
 
 
     /**
-     * Sends a message and waits until the handler is ready (when the handler for the message type is registered).
+     * Sends a message and waits until the handler for the message type is ready (when the handler is registered).
+     *
+     * This method ensures that the handler for the message type is prepared before sending the message.
      *
      * @param type The message type.
      * @param args The content of the message.
@@ -654,11 +656,12 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     }
 
     /**
-     * Sends a message and waits for a response. Waits until the handler is ready before sending the message.
+     * Sends a message and waits for a response. It waits until the handler for the message type is ready
+     * before sending the message and then returns the response once received.
      *
      * @param type The message type.
      * @param args The content of the message.
-     * @returns The response message.
+     * @returns A promise that resolves with the response message.
      */
     async sendAndWait<T extends Type<SendMessageMap>>(type: T, ...args: Request<T, SendMessageMap>) {
         await this.waitUntilReady(type);
@@ -672,15 +675,13 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     }
 
     /**
-     * Waits until the handler for a specific message type is registered.
+     * Waits until the handler for a specific message type is registered (ready).
+     * If the handler is not ready, the method will wait for the handler to be registered.
      *
      * @param type The message type.
      */
     async waitUntilReady<T extends Type<SendMessageMap>>(type: T) {
-        if (this.#preparedTypes.includes('*')) {
-            return;
-        }
-        if (this.#preparedTypes.includes(type as string)) {
+        if (this.isHandlerReady(type)) {
             return;
         }
         await new Promise<void>(resolve => {
@@ -690,7 +691,21 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     }
 
     /**
+     * Checks if the handler for the specific message type is registered and ready.
+     *
+     * This method checks if the handler for the given message type has been prepared.
+     *
+     * @param type The message type.
+     * @returns `true` if the handler is ready; otherwise, `false`.
+     */
+    isHandlerReady<T extends Type<SendMessageMap>>(type: T) {
+        return this.#preparedTypes.includes('*') || this.#preparedTypes.includes(type as string);
+    }
+
+    /**
      * Attempts to send a message without waiting for a response.
+     *
+     * This method sends the message immediately without waiting for any handler to be ready.
      *
      * @param type The message type.
      * @param args The content of the message.
@@ -700,13 +715,17 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     }
 
     /**
-     * Attempts to send a message and waits for a response.
+     * Attempts to send a message and waits for a response. If the handler is not prepared,
+     * the method will not send the message and will return `undefined`.
      *
      * @param type The message type.
      * @param args The content of the message.
-     * @returns The response message.
+     * @returns A promise that resolves with the response message, or `undefined` if the handler is not prepared.
      */
     async trySendAndWait<T extends Type<SendMessageMap>>(type: T, ...args: Request<T, SendMessageMap>) {
+        if (!this.isHandlerReady(type)) {
+            return undefined;
+        }
         const callId = this.#generateCallId();
         const pr = new Promise<Response<T, SendMessageMap>>((resolve, reject) => {
             this.#responseEmitter.once(callId, resolve);
