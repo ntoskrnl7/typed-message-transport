@@ -1,6 +1,6 @@
 {
   "name": "typed-message-transport",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "scripts": {
     "build": "tsc --target ES2015 && esbuild src/superJSON.ts --bundle --target=ES2015 --outfile=superJSON.js --platform=node",
     "test": "jest --preset ts-jest",

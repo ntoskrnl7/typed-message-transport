@@ -22,7 +22,7 @@ function loggingEnabled(): boolean {
  * This ID helps in correlating requests and responses, particularly in cases
  * of asynchronous communication (e.g., when waiting for a response to a sent message).
  */
-type CallId = string;
+type CallId = `${string}-${string}`;
 
 /**
  * Defines the header structure for a message, including a type and an optional callId.
@@ -297,7 +297,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @returns {CallId} A unique call ID.
      */
     #generateCallId(): CallId {
-        return this.#seq++ + '-' + Math.random();
+        return (this.#seq++ + '-' + Math.random()) as CallId;
     }
 
     /**
