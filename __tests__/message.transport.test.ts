@@ -62,7 +62,7 @@ describe('MessageTransport send', () => {
             });
             await tp2.sendAndWait('test1-message', 'arg1', 'arg2');
 
-            tp1.setHandler('test1-complex-message', async (type, ...args) => {
+            tp1.setHandler('test1-complex-message', (type, ...args) => {
                 switch (type) {
                     case 'type1':
                         expect(args[0]).toEqual('test');

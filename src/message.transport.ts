@@ -194,13 +194,8 @@ export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchem
  *
  * @param T - The message type that this handler will process.
  * @param MessageMap - A map of message types and their corresponding request/response structures.
- *
- * @example
- * const handler: Handler<'message-type', MessageMap> = (type, ...args) => {
- *     return Promise.resolve('response');
- * };
  */
-export type Handler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: [...Request<T, MessageMap>]) => Promise<Response<T, MessageMap>>;
+export type Handler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: [...Request<T, MessageMap>]) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
 
 /**
  * A type for a handler function that handles a specific message type `T` and returns a promise of the response.
@@ -208,13 +203,8 @@ export type Handler<T extends Type<MessageMap>, MessageMap extends MessageSchema
  *
  * @param T - The message type that this handler will process.
  * @param MessageMap - A map of message types and their corresponding request/response structures.
- *
- * @example
- * const typeHandler: TypeHandler<'message-type', MessageMap> = (...args) => {
- *     return Promise.resolve('response');
- * };
  */
-export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: [...Request<T, MessageMap>]) => Promise<Response<T, MessageMap>>;
+export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: [...Request<T, MessageMap>]) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
 
 /**
  * Class that handles message transportation with support for both sending and receiving messages.
@@ -451,17 +441,9 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                         this.#emitter.emit(type, ...args);
 
                         // Calls the handler (handlers should return results and be called only once)
-                        const handler = this.#handlerMap.get(type);
+                        const handler = this.#handlerMap.get(type) ?? this.#handler;
                         if (handler) {
-                            handler(...args).then(response => {
-                                if (loggingEnabled()) console.log(type, callId, ...args, response);
-                                this.#sendRaw([{ callId }, response], callId);
-                            }).catch(reason => {
-                                if (loggingEnabled()) console.warn(reason);
-                                this.#sendRaw([{ type: 'rejection-error', callId }, reason], callId);
-                            });
-                        } else if (this.#handler) {
-                            this.#handler(type, ...args).then(response => {
+                            Promise.resolve().then(() => handler(...args)).then(response => {
                                 if (loggingEnabled()) console.log(type, callId, ...args, response);
                                 this.#sendRaw([{ callId }, response], callId);
                             }).catch(reason => {
