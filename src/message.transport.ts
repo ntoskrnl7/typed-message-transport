@@ -441,9 +441,9 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                         this.#emitter.emit(type, ...args);
 
                         // Calls the handler (handlers should return results and be called only once)
-                        const handler = this.#handlerMap.get(type) ?? this.#handler;
+                        const handler = this.#handlerMap.get(type) ?? this.#handler?.bind(this, type);
                         if (handler) {
-                            Promise.resolve().then(() => handler(...args)).then(response => {
+                            Promise.resolve(handler(...args)).then(response => {
                                 if (loggingEnabled()) console.log(type, callId, ...args, response);
                                 this.#sendRaw([{ callId }, response], callId);
                             }).catch(reason => {
