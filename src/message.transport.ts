@@ -178,6 +178,12 @@ export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchem
 
 /**
  * A type for a listener function that handles a specific message type `T`.
+ * This listener function accepts the message type and its arguments, enabling flexible processing.
+ */
+export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: [...Request<T, MessageMap>]) => void;
+
+/**
+ * A type for a listener function that handles a specific message type `T`.
  * The listener function accepts the request arguments corresponding to the message type `T` in the `MessageMap`.
  *
  * @param T - The message type that this listener will handle.
@@ -186,7 +192,7 @@ export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchem
  * @example
  * const listener: Listener<'message-type', MessageMap> = (...args) => { handle the request };
  */
-export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: [...Request<T, MessageMap>]) => void;
+export type TypeListener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: [...Request<T, MessageMap>]) => void;
 
 /**
  * A type for a handler function that handles a specific message type `T`.
@@ -229,6 +235,11 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * is set for a particular message type.
      */
     #handler?: (...args: MessageRequestType) => Promise<MessageResponseType>;
+
+    /**
+     * A generic listener that gets called for all message types if registered.
+     */
+    #listener?: (...args: MessageRequestType) => void;
 
     /**
      * A map of message types to their corresponding handlers. Each message type has an associated handler function
@@ -440,6 +451,10 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                         // Triggers events that do not return results such as `on` or `once`
                         this.#emitter.emit(type, ...args);
 
+                        if (this.#listener) {
+                            this.#listener(type, ...args);
+                        }
+
                         // Calls the handler (handlers should return results and be called only once)
                         const handler = this.#handlerMap.get(type) ?? this.#handler?.bind(this, type);
                         if (handler) {
@@ -570,6 +585,12 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     }
 
     /**
+     * Registers a generic listener for all message types.
+     * The listener will be called whenever any message is received.
+     */
+    on<T extends Type<RecvMessageMap>>(listener: Listener<T, RecvMessageMap>): this;
+
+    /**
      * Registers an event listener for the specified message type.
      * The listener will be called whenever a message of the given type is received.
      * Additionally, it notifies the remote side that the handler has been added.
@@ -578,9 +599,16 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @param listener - The callback function to handle the message.
      * @returns The current instance of `MessageTransport` for method chaining.
      */
-    on<T extends Type<RecvMessageMap>>(type: T, listener: Listener<T, RecvMessageMap>) {
-        this.#emitter.on(type as string, listener as (...args: MessageRequestType) => void);
-        this.#sendRaw([{ type: 'handler-added' }, type as string]);
+    on<T extends Type<RecvMessageMap>>(type: T, listener: TypeListener<T, RecvMessageMap>): this;
+
+    on<T extends Type<RecvMessageMap>>(typeOrListener: T | Listener<T, RecvMessageMap>, listener: TypeListener<T, RecvMessageMap> | void) {
+        if (typeof typeOrListener === 'function') {
+            this.#listener = typeOrListener as (...args: MessageRequestType) => void;
+            this.#sendRaw([{ type: 'handler-added' }, '*']);
+        } else {
+            this.#emitter.on(typeOrListener as string, listener as (...args: MessageRequestType) => void);
+            this.#sendRaw([{ type: 'handler-added' }, typeOrListener as string]);
+        }
         return this;
     }
 
@@ -593,7 +621,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @param listener - The callback function to handle the message.
      * @returns The current instance of `MessageTransport` for method chaining.
      */
-    once<T extends Type<RecvMessageMap>>(type: T, listener: Listener<T, RecvMessageMap>) {
+    once<T extends Type<RecvMessageMap>>(type: T, listener: TypeListener<T, RecvMessageMap>) {
         this.#emitter.once(type as string, listener as (...args: MessageRequestType) => void);
         this.#sendRaw([{ type: 'handler-added' }, type as string]);
         return this;
@@ -607,7 +635,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @param listener - The callback function to be removed.
      * @returns The current instance of `MessageTransport` for method chaining.
      */
-    off<T extends Type<RecvMessageMap>>(type: T, listener: Listener<T, RecvMessageMap>) {
+    off<T extends Type<RecvMessageMap>>(type: T, listener: TypeListener<T, RecvMessageMap>) {
         this.#emitter.off(type as string, listener as (...args: MessageRequestType) => void);
         return this;
     }
