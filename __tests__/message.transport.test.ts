@@ -16,6 +16,10 @@ type Test1MessageMap = {
         request: [type: 'type2', b: number, c: number];
         response: void;
     };
+    'test2-message': {
+        request: [a: string, b: string];
+        response: string;
+    };
 };
 
 type Test2MessageMap = {
@@ -23,7 +27,7 @@ type Test2MessageMap = {
         request: [a: number, b: number];
     };
     'test2-message-2': {
-        request: [];
+        response: number;
     }
 };
 
@@ -58,13 +62,31 @@ describe('MessageTransport send', () => {
                 send(data: ArrayBuffer) { port2.postMessage(data); },
                 onMessage(onmessage) { port2.onmessage = onmessage; }
             });
+
+            tp1.setHandler((type, args, done) => {
+                switch (type) {
+                    case 'test1-complex-message':
+                        switch (args[0]) {
+                            case 'type1':
+                                expect(args[1]).toEqual('test');
+                                return done({ success: true });
+                            case 'type2':
+                                expect(args[1]).toEqual(10);
+                                expect(args[2]).toEqual(20);
+                                return done({ success: true });
+                        }
+                    case 'test1-message':
+                        return done({ success: true });
+                    case 'test2-message':
+                        return done(args[0] + args[1]);
+                }
+            });
+
             tp1.setHandler('test1-message', (a, b) => {
                 expect(a).toEqual('arg1');
                 expect(b).toEqual('arg2');
                 return { success: true };
             });
-            await tp2.sendAndWait('test1-message', 'arg1', 'arg2');
-
             tp1.setHandler('test1-complex-message', (type, ...args) => {
                 switch (type) {
                     case 'type1':
@@ -76,29 +98,33 @@ describe('MessageTransport send', () => {
                         return;
                 }
             });
+            tp1.setHandler('test2-message', (a, b) => a + b);
 
             // tp2.setHandler('test2-message', (a, b) => {
             //     expect(a).toEqual(10);
             //     expect(b).toEqual(20);
             // });
+            // tp2.setHandler('test2-message-2', () => 1234);
 
-            tp2.setHandler(function (type, ...args)  {
+            tp2.setHandler((type, args, done) => {
                 switch (type) {
                     case 'test2-message':
                         expect(args.length == 2);
                         expect(typeof args[0]).toEqual('number');
                         expect(args[0]).toEqual(10);
                         expect(args[1]).toEqual(20);
-                        break;
+                        return done();
                     case 'test2-message-2':
                         expect(args.length == 0);
-                        break;
+                        return done(1234);
                 }
             });
 
             await tp1.sendAndWait('test2-message', 10, 20);
-            await tp1.sendAndWait('test2-message-2');
+            expect(await tp1.sendAndWait('test2-message-2')).toEqual(1234);
 
+            await tp2.sendAndWait('test1-message', 'arg1', 'arg2');
+            expect(await tp2.sendAndWait('test2-message', '12', '34')).toEqual('1234');
             await tp2.sendAndWait('test1-complex-message', 'type1', 'test');
             await tp2.sendAndWait('test1-complex-message', 'type2', 10, 20);
         } finally {

@@ -116,10 +116,10 @@ In this example, the handler processes incoming messages of type `'message-type'
 You can also use a general handler to handle multiple message types, enabling more flexible message handling based on `type`.
 
 ```typescript
-transport.setHandler(async (type, ...args) => {
+transport.setHandler((type, args, done) => {
     switch (type) {
         case 'message-type':
-            return { replyMessage: args[0] + args[1] };
+            return done({ replyMessage: args[0] + args[1] });
         default:
             throw new Error('not supported');
             break;

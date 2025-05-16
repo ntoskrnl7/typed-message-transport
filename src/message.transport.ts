@@ -42,7 +42,7 @@ type PartialSendInit = MessageHeader<'partial-send-init'> & {
 };
 
 /**
- * Defines the structure for a partial message chunk, which includes the actual data chunk 
+ * Defines the structure for a partial message chunk, which includes the actual data chunk
  * being sent as part of a larger message.
  */
 type PartialSend = MessageHeader<'partial-send'> & {
@@ -133,7 +133,7 @@ export type MessageResponseType = unknown | void | undefined;
  */
 export type MessageSchema = {
     [key: string]: {
-        request: MessageRequestType;              // Arguments expected in the request for this message type
+        request?: MessageRequestType;     // Arguments expected in the request for this message type
         response?: MessageResponseType;  // Expected response type for this message type
     };
 };
@@ -160,7 +160,7 @@ export type Type<MessageMap extends MessageSchema> = Exclude<keyof MessageMap, n
  * @example
  * type RequestArgs = Request<'message-type', MessageMap>; // RequestArgs would be `[]` (an empty array) in this case
  */
-export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { request: infer Req } ? Req extends MessageRequestType ? Req : [] : never;
+export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { request: infer Req } ? Req extends MessageRequestType ? Req : [] : [];
 
 /**
  * A type that extracts the response type for a given message type `T` from the `MessageMap`.
@@ -180,7 +180,7 @@ export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchem
  * A type for a listener function that handles a specific message type `T`.
  * This listener function accepts the message type and its arguments, enabling flexible processing.
  */
-export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: [...Request<T, MessageMap>]) => void;
+export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: Request<T, MessageMap>) => void;
 
 /**
  * A type for a listener function that handles a specific message type `T`.
@@ -192,16 +192,51 @@ export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchem
  * @example
  * const listener: Listener<'message-type', MessageMap> = (...args) => { handle the request };
  */
-export type TypeListener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: [...Request<T, MessageMap>]) => void;
+export type TypeListener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: Request<T, MessageMap>) => void;
 
 /**
- * A type for a handler function that handles a specific message type `T`.
- * The handler function processes the request arguments for the given message type `T` and returns a promise of the response.
+ * A string literal type used to enforce returning the result of `done()` in a handler.
  *
- * @param T - The message type that this handler will process.
- * @param MessageMap - A map of message types and their corresponding request/response structures.
+ * This is used to produce a compiler error if `done()` is called without `return`.
  */
-export type Handler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: [...Request<T, MessageMap>]) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
+type MustReturnFromDone = "You must call return done(<value>) in your setHandler callback.";
+
+/**
+ * Defines the structure of arguments passed to the handler function registered with `setHandler`.
+ *
+ * For each message type `T` in `MessageMap`, this creates a tuple of:
+ * - the message type key,
+ * - its request arguments (spread into an array),
+ * - and a `done` callback which must be returned from to ensure proper flow control.
+ *
+ * The return type of `done` is `MustReturnFromDone`, enforcing correct usage through TypeScript.
+ *
+ * @template MessageMap - A mapping of all message types and their request/response structures.
+ */
+type HandlerArgs<MessageMap extends MessageSchema> = {
+    [T in keyof MessageMap]: MessageMap[T] extends { request: infer Request extends unknown[] }
+    ? [type: T, args: Request, done: (value: MessageMap[T] extends { response: infer Response } ? Response : void) => MustReturnFromDone]
+    : [type: T, args: [], done: (value: MessageMap[T] extends { response: infer Response } ? Response : void) => MustReturnFromDone]
+}[keyof MessageMap];
+
+/**
+ * A generic handler function type used with `setHandler`.
+ *
+ * This function receives a message type, its arguments, and a `done` callback.
+ * The handler **must** return the result of calling `done(...)`, which is enforced by the `MustReturnFromDone` type.
+ *
+ * This pattern prevents unintentional continuation of control flow after calling `done`.
+ *
+ * @template MessageMap - A mapping of all message types and their request/response structures.
+ *
+ * @example
+ * tp.setHandler((type, args, done) => {
+ *   if (type === 'get-user') {
+ *     return done({ id: 1, name: 'Alice' }); // ✅ Correct usage
+ *   }
+ * });
+ */
+export type Handler<MessageMap extends MessageSchema> = (...args: HandlerArgs<MessageMap>) => MustReturnFromDone | Promise<MustReturnFromDone>;
 
 /**
  * A type for a handler function that handles a specific message type `T` and returns a promise of the response.
@@ -210,7 +245,7 @@ export type Handler<T extends Type<MessageMap>, MessageMap extends MessageSchema
  * @param T - The message type that this handler will process.
  * @param MessageMap - A map of message types and their corresponding request/response structures.
  */
-export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: [...Request<T, MessageMap>]) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
+export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: Request<T, MessageMap>) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
 
 /**
  * Class that handles message transportation with support for both sending and receiving messages.
@@ -456,14 +491,21 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                         }
 
                         // Calls the handler (handlers should return results and be called only once)
-                        const handler = this.#handlerMap.get(type) ?? this.#handler?.bind(this, type);
+                        const handler = this.#handlerMap.get(type)?.bind(this, ...args) ?? this.#handler?.bind(this, type, args, (response: unknown) => {
+                            throw { _$handler_response$_: response };
+                        });
                         if (handler) {
-                            Promise.resolve(handler(...args)).then(response => {
+                            Promise.resolve().then(handler).then(response => {
                                 if (loggingEnabled()) console.log(type, callId, ...args, response);
                                 this.#sendRaw([{ callId }, response], callId);
                             }).catch(reason => {
-                                if (loggingEnabled()) console.warn(reason);
-                                this.#sendRaw([{ type: 'rejection-error', callId }, reason], callId);
+                                if ('_$handler_response$_' in reason) {
+                                    if (loggingEnabled()) console.log(type, callId, ...args, reason._$handler_response$_);
+                                    this.#sendRaw([{ callId }, reason._$handler_response$_], callId);
+                                } else {
+                                    if (loggingEnabled()) console.warn(reason);
+                                    this.#sendRaw([{ type: 'rejection-error', callId }, reason], callId);
+                                }
                             });
                         }
                     } else {
@@ -561,7 +603,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      *
      * @param handler The handler to process the message.
      */
-    setHandler<T extends Type<RecvMessageMap>>(handler: Handler<T, RecvMessageMap>): this;
+    setHandler(handler: Handler<RecvMessageMap>): this;
 
     /**
      * Registers a handler for a specific message type.
@@ -573,9 +615,9 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      */
     setHandler<T extends Type<RecvMessageMap>>(type: T, handler: TypeHandler<T, RecvMessageMap>): this;
 
-    setHandler<T extends Type<RecvMessageMap>>(typeOrHandler: T | Handler<T, RecvMessageMap>, handler: TypeHandler<T, RecvMessageMap> | void) {
+    setHandler<T extends Type<RecvMessageMap>>(typeOrHandler: T | Handler<RecvMessageMap>, handler: TypeHandler<T, RecvMessageMap> | void) {
         if (typeof typeOrHandler === 'function') {
-            this.#handler = typeOrHandler as (...args: MessageRequestType) => Promise<MessageResponseType>;
+            this.#handler = typeOrHandler as unknown as (...args: MessageRequestType) => Promise<MessageResponseType>;
             this.#sendRaw([{ type: 'handler-added' }, '*']);
         } else {
             this.#handlerMap.set(typeOrHandler as string, handler as (...args: MessageRequestType) => Promise<MessageResponseType>);
