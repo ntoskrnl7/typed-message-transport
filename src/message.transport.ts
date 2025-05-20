@@ -176,11 +176,17 @@ export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema
  */
 export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { response: infer Res } ? Res : void;
 
+type ListenerArgs<MessageMap extends MessageSchema> = {
+    [T in keyof MessageMap]: MessageMap[T] extends { request: infer Request extends unknown[] }
+    ? [type: T, args: Request]
+    : [type: T, args: []]
+}[keyof MessageMap];
+
 /**
  * A type for a listener function that handles a specific message type `T`.
  * This listener function accepts the message type and its arguments, enabling flexible processing.
  */
-export type Listener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (type: T, ...args: Request<T, MessageMap>) => void;
+export type Listener<MessageMap extends MessageSchema> = (...args:ListenerArgs<MessageMap>) => void;
 
 /**
  * A type for a listener function that handles a specific message type `T`.
@@ -199,7 +205,9 @@ export type TypeListener<T extends Type<MessageMap>, MessageMap extends MessageS
  *
  * This is used to produce a compiler error if `done()` is called without `return`.
  */
-type MustReturnFromDone = "You must call return done(<value>) in your setHandler callback.";
+type MustReturnFromDone = {
+    _$_$_: "You must call return done(<value>) in your setHandler callback."
+}
 
 /**
  * Defines the structure of arguments passed to the handler function registered with `setHandler`.
@@ -247,6 +255,8 @@ export type Handler<MessageMap extends MessageSchema> = (...args: HandlerArgs<Me
  */
 export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: Request<T, MessageMap>) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
 
+export type WellknownChannel = RTCDataChannel | WebSocket;
+
 /**
  * Class that handles message transportation with support for both sending and receiving messages.
  * Supports large message splitting and ensures message delivery in chunks.
@@ -257,7 +267,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Internal channel used for communication, which can be a custom TransportChannel,
      * RTCDataChannel, or WebSocket.
      */
-    #channel: TransportChannel | RTCDataChannel | WebSocket;
+    #channel: TransportChannel | WellknownChannel;
 
     /**
      * Sequence counter used to generate unique call IDs for each request.
@@ -487,7 +497,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                         this.#emitter.emit(type, ...args);
 
                         if (this.#listener) {
-                            this.#listener(type, ...args);
+                            this.#listener(type, args);
                         }
 
                         // Calls the handler (handlers should return results and be called only once)
@@ -630,7 +640,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Registers a generic listener for all message types.
      * The listener will be called whenever any message is received.
      */
-    on<T extends Type<RecvMessageMap>>(listener: Listener<T, RecvMessageMap>): this;
+    on<T extends Type<RecvMessageMap>>(listener: Listener<RecvMessageMap>): this;
 
     /**
      * Registers an event listener for the specified message type.
@@ -643,7 +653,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      */
     on<T extends Type<RecvMessageMap>>(type: T, listener: TypeListener<T, RecvMessageMap>): this;
 
-    on<T extends Type<RecvMessageMap>>(typeOrListener: T | Listener<T, RecvMessageMap>, listener: TypeListener<T, RecvMessageMap> | void) {
+    on<T extends Type<RecvMessageMap>>(typeOrListener: T | Listener<RecvMessageMap>, listener: TypeListener<T, RecvMessageMap> | void) {
         if (typeof typeOrListener === 'function') {
             this.#listener = typeOrListener as (...args: MessageRequestType) => void;
             this.#sendRaw([{ type: 'handler-added' }, '*']);

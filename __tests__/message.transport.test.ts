@@ -63,20 +63,36 @@ describe('MessageTransport send', () => {
                 onMessage(onmessage) { port2.onmessage = onmessage; }
             });
 
-            tp1.setHandler((type, args, done) => {
+            tp1.on((type, args) => {
                 switch (type) {
+                    case 'test1-message':
+                        expect(args[0]).toEqual('arg1');
+                        expect(args[1]).toEqual('arg2');
+                        break;
                     case 'test1-complex-message':
                         switch (args[0]) {
                             case 'type1':
                                 expect(args[1]).toEqual('test');
-                                return done({ success: true });
+                                return { success: true }
                             case 'type2':
                                 expect(args[1]).toEqual(10);
                                 expect(args[2]).toEqual(20);
-                                return done({ success: true });
+                                return;
                         }
+                        break;
+                    case 'test2-message':
+                        expect(args[0]).toEqual('12');
+                        expect(args[1]).toEqual('34');
+                        break;
+                }
+            });
+
+            tp1.setHandler((type, args, done) => {
+                switch (type) {
                     case 'test1-message':
-                        return done({ success: true });
+                    case 'test1-complex-message':
+                        fail('This function should not be called.')
+                        break;
                     case 'test2-message':
                         return done(args[0] + args[1]);
                 }
@@ -98,13 +114,27 @@ describe('MessageTransport send', () => {
                         return;
                 }
             });
-            tp1.setHandler('test2-message', (a, b) => a + b);
+            //tp1.setHandler('test2-message', (a, b) => a + b);
 
             // tp2.setHandler('test2-message', (a, b) => {
             //     expect(a).toEqual(10);
             //     expect(b).toEqual(20);
             // });
             // tp2.setHandler('test2-message-2', () => 1234);
+
+            tp2.on((type, args) => {
+                switch (type) {
+                    case 'test2-message':
+                        expect(args.length == 2);
+                        expect(typeof args[0]).toEqual('number');
+                        expect(args[0]).toEqual(10);
+                        expect(args[1]).toEqual(20);
+                        break;
+                    case 'test2-message-2':
+                        expect(args.length == 0);
+                        break;
+                }
+            });
 
             tp2.setHandler((type, args, done) => {
                 switch (type) {
