@@ -3,6 +3,8 @@ import { compress, uncompress } from 'snappyjs';
 import { Buffer } from 'buffer/';
 import SuperJSON from './superJSON';
 
+import JSBI from 'jsbi';
+
 /**
  * Checks whether logging is enabled by looking up the `loggingEnabled` property
  * on the global object (`globalThis`).
@@ -186,7 +188,7 @@ type ListenerArgs<MessageMap extends MessageSchema> = {
  * A type for a listener function that handles a specific message type `T`.
  * This listener function accepts the message type and its arguments, enabling flexible processing.
  */
-export type Listener<MessageMap extends MessageSchema> = (...args:ListenerArgs<MessageMap>) => void;
+export type Listener<MessageMap extends MessageSchema> = (...args: ListenerArgs<MessageMap>) => void;
 
 /**
  * A type for a listener function that handles a specific message type `T`.
@@ -273,7 +275,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Sequence counter used to generate unique call IDs for each request.
      * This ensures that each request can be uniquely identified for proper response handling.
      */
-    #seq: bigint = BigInt(0);
+    #seq: JSBI = JSBI.BigInt(0);
 
     /**
      * A generic handler that processes incoming messages. This handler is invoked when no specific handler
@@ -343,7 +345,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * @returns {CallId} A unique call ID.
      */
     #generateCallId(): CallId {
-        return (this.#seq++ + '-' + Math.random()) as CallId;
+        return (JSBI.add(this.#seq, JSBI.BigInt(1)).toString() + '-' + Math.random()) as CallId;
     }
 
     /**

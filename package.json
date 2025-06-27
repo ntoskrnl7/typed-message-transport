@@ -1,6 +1,6 @@
 {
   "name": "typed-message-transport",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "scripts": {
     "build": "tsc --target ES2015 && esbuild src/superJSON.ts --bundle --target=ES2015 --outfile=superJSON.js --platform=node",
     "test": "jest --preset ts-jest",
@@ -9,19 +9,20 @@
   "dependencies": {
     "buffer": "^6.0.3",
     "events": "^3.3.0",
+    "jsbi": "^4.3.2",
     "snappyjs": "^0.7.0",
     "superjson": "^2.2.2"
   },
   "devDependencies": {
     "@types/chai": "^5.2.2",
-    "@types/jest": "^29.5.14",
-    "@types/node": "^22.15.19",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.4",
     "@types/snappyjs": "^0.7.1",
-    "esbuild": "^0.25.4",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.3.4",
-    "typescript": "^5.8.3",
-    "flatted": "^3.3.3"
+    "esbuild": "^0.25.5",
+    "flatted": "^3.3.3",
+    "jest": "^30.0.3",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.8.3"
   },
   "files": [
     "*.js",
