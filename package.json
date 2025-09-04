@@ -1,10 +1,14 @@
 {
   "name": "typed-message-transport",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "scripts": {
+    "lint:es": "eslint src/*.ts",
+    "lint:ox": "oxlint ./src",
+    "lint": "concurrently npm:lint:es npm:lint:ox",
     "build": "tsc --target ES2015 && esbuild src/superJSON.ts --bundle --target=ES2015 --outfile=superJSON.js --platform=node",
-    "test": "jest --preset ts-jest",
-    "prepublishOnly": "npm run build && npm test"
+    "extractTypes": "npx tsc -p tsconfig.dts.json && npx api-extractor run --local",
+    "test": "npm run build && jest --preset ts-jest",
+    "prepublishOnly": "npm run lint && npm run build && npm test && npm run extractTypes"
   },
   "dependencies": {
     "buffer": "^6.0.3",
@@ -14,19 +18,25 @@
     "superjson": "^2.2.2"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.11",
     "@types/chai": "^5.2.2",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.4",
+    "@types/node": "^24.3.0",
     "@types/snappyjs": "^0.7.1",
-    "esbuild": "^0.25.5",
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.25.9",
+    "eslint": "^9.34.0",
     "flatted": "^3.3.3",
-    "jest": "^30.0.3",
-    "ts-jest": "^29.4.0",
-    "typescript": "^5.8.3"
+    "jest": "^30.1.3",
+    "oxlint": "^1.14.0",
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.42.0"
   },
   "files": [
     "*.js",
     "*.d.ts",
+    "tsdoc-metadata.json",
     "README.md"
   ]
 }

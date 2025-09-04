@@ -125,13 +125,13 @@ describe('MessageTransport send', () => {
             tp2.on((type, args) => {
                 switch (type) {
                     case 'test2-message':
-                        expect(args.length == 2);
+                        expect(args.length === 2);
                         expect(typeof args[0]).toEqual('number');
                         expect(args[0]).toEqual(10);
                         expect(args[1]).toEqual(20);
                         break;
                     case 'test2-message-2':
-                        expect(args.length == 0);
+                        expect(args.length === 0);
                         break;
                 }
             });
@@ -139,13 +139,13 @@ describe('MessageTransport send', () => {
             tp2.setHandler((type, args, done) => {
                 switch (type) {
                     case 'test2-message':
-                        expect(args.length == 2);
+                        expect(args.length === 2);
                         expect(typeof args[0]).toEqual('number');
                         expect(args[0]).toEqual(10);
                         expect(args[1]).toEqual(20);
                         return done();
                     case 'test2-message-2':
-                        expect(args.length == 0);
+                        expect(args.length === 0);
                         return done(1234);
                 }
             });

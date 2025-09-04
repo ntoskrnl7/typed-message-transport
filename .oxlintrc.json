@@ -1,0 +1,46 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "rules": {
+        "no-debugger": "off",
+        "prefer-const": "error",
+        "no-implicit-any-catch": "error",
+        "no-constant-condition": "error",
+        "no-var": "error",
+        "eqeqeq": [
+            "error",
+            "always"
+        ],
+        "no-empty-function": "off",
+        "no-extra-boolean-cast": "error",
+        "no-unreachable": "error",
+        "no-return-await": "error",
+        "no-useless-return": "error",
+        "no-shadow": "error",
+        "consistent-return": "error",
+        "default-case": "off",
+        "no-fallthrough": "error",
+        "no-self-compare": "error",
+        "no-unsafe-finally": "error",
+        "no-unsafe-negation": "error",
+        "no-explicit-any": "error",
+        "no-non-null-assertion": "off",
+        "no-misused-promises": "error",
+        "ban-ts-comment": "error",
+        "no-unused-vars": [
+            "error",
+            {
+                "vars": "all",
+                "args": "after-used",
+                "ignoreRestSiblings": false
+            }
+        ],
+        "no-inferrable-types": "warn",
+        "consistent-type-assertions": [
+            "error",
+            {
+                "assertionStyle": "as",
+                "objectLiteralTypeAssertions": "never"
+            }
+        ]
+    }
+}

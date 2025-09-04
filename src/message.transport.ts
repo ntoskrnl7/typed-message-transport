@@ -16,21 +16,25 @@ import JSBI from 'jsbi';
  * @returns {boolean} `true` if logging is enabled, `false` otherwise.
  */
 function loggingEnabled(): boolean {
-    return (globalThis as any).loggingEnabled;
+    return globalThis.loggingEnabled;
 }
 
 /**
  * A type alias for a unique identifier used for tracking calls/messages.
  * This ID helps in correlating requests and responses, particularly in cases
  * of asynchronous communication (e.g., when waiting for a response to a sent message).
+ *
+ * @public
  */
-type CallId = `${string}-${string}`;
+export type CallId = `${string}-${string}`;
 
 /**
  * Defines the header structure for a message, including a type and an optional callId.
  * The `type` field specifies the type of the message, and `callId` is a unique identifier for the message.
+ * 
+ * @public
  */
-type MessageHeader<T extends string> = {
+export type MessageHeader<T extends string> = {
     type?: T;  // Type of the message (e.g., 'partial-send-init', 'partial-send')
     callId?: CallId;  // Optional unique identifier for the message (used for tracking)
 }
@@ -55,12 +59,14 @@ type PartialSend = MessageHeader<'partial-send'> & {
  * Interface for serializing and deserializing messages.
  * - `stringify` converts a message or data structure into a string format.
  * - `parse` converts a string back into a message structure, returning the message header and the corresponding data.
+ * 
+ * @public
  */
 export interface MessageSerializer {
     /**
      * Converts data to a string format.
      *
-     * @param data The data to be serialized into a string.
+     * @param data - The data to be serialized into a string.
      * @returns The serialized string representation of the data.
      */
     stringify(data: unknown): string;
@@ -68,7 +74,7 @@ export interface MessageSerializer {
     /**
      * Parses a string and converts it into a message structure (a header followed by the relevant data).
      *
-     * @param data The serialized string to be parsed.
+     * @param data - The serialized string to be parsed.
      * @returns A tuple containing the message header and the corresponding data.
      */
     parse(data: string): [MessageHeader<string>, ...MessageRequestType];
@@ -76,21 +82,23 @@ export interface MessageSerializer {
 
 /**
  * Interface for a communication channel to send/receive data.
+ * 
+ * @public
  */
 export interface TransportChannel {
     /**
      * Method to send data over the channel.
      *
-     * @param data The data to be sent via MessageTransport.
+     * @param data - The data to be sent via MessageTransport.
      */
     send(data: ArrayBuffer): void;
 
     /**
      * Method to register a handler for receiving messages.
      *
-     * @param onmessage The handler function for receiving messages from MessageTransport.
+     * @param onmessage - The handler function for receiving messages from MessageTransport.
      */
-    onMessage(onmessage: (event: MessageEvent<ArrayBuffer>) => any): void;
+    onMessage(onmessage: (event: MessageEvent<ArrayBuffer>) => ReturnType<NonNullable<MessageEventTarget<TransportChannel>['onmessage']>>): void;
 }
 
 /**
@@ -101,6 +109,8 @@ export interface TransportChannel {
  * - `undefined` indicates that an argument may be optional or not provided.
  *
  * This array type enables flexibility in defining the arguments for each message type.
+ * 
+ * @public
  */
 export type MessageRequestType = (unknown | undefined)[];
 
@@ -113,6 +123,8 @@ export type MessageRequestType = (unknown | undefined)[];
  *
  * This type union allows the flexibility needed to represent different response scenarios
  * within the message schema.
+ * 
+ * @public
  */
 export type MessageResponseType = unknown | void | undefined;
 
@@ -125,6 +137,7 @@ export type MessageResponseType = unknown | void | undefined;
  * - The `response` represents the expected type of the response for the given message.
  *
  * @example
+ * ```ts
  * // Example of a message schema:
  * {
  *   'getData': {
@@ -132,6 +145,9 @@ export type MessageResponseType = unknown | void | undefined;
  *     response: { data: string }  // expects an object with a 'data' field (string)
  *   }
  * }
+ * ```
+ * 
+ * @public
  */
 export type MessageSchema = {
     [key: string]: {
@@ -145,8 +161,12 @@ export type MessageSchema = {
  * This is used to extract the message types from the `MessageMap` object.
  *
  * @example
+ * ```ts
  * type MessageMap = { 'message-type': { request: [], response: string } };
  * type MessageType = Type<MessageMap>; // 'message-type'
+ * ```
+ * 
+ * @public
  */
 export type Type<MessageMap extends MessageSchema> = Exclude<keyof MessageMap, number | symbol>;
 
@@ -160,7 +180,11 @@ export type Type<MessageMap extends MessageSchema> = Exclude<keyof MessageMap, n
  * @param MessageMap - A map of message types and their corresponding request/response structures.
  *
  * @example
+ * ```ts
  * type RequestArgs = Request<'message-type', MessageMap>; // RequestArgs would be `[]` (an empty array) in this case
+ * ```
+ * 
+ * @public
  */
 export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { request: infer Req } ? Req extends MessageRequestType ? Req : [] : [];
 
@@ -174,11 +198,18 @@ export type Request<T extends Type<MessageMap>, MessageMap extends MessageSchema
  * @param MessageMap - A map of message types and their corresponding request/response structures.
  *
  * @example
+ * ```ts
  * type ResponseType = Response<'message-type', MessageMap>; // ResponseType would be `string` in this case
+ * ```
+ * 
+ * @public
  */
 export type Response<T extends Type<MessageMap>, MessageMap extends MessageSchema> = MessageMap[T] extends { response: infer Res } ? Res : void;
 
-type ListenerArgs<MessageMap extends MessageSchema> = {
+/**
+ * @public
+ */
+export type ListenerArgs<MessageMap extends MessageSchema> = {
     [T in keyof MessageMap]: MessageMap[T] extends { request: infer Request extends unknown[] }
     ? [type: T, args: Request]
     : [type: T, args: []]
@@ -187,6 +218,8 @@ type ListenerArgs<MessageMap extends MessageSchema> = {
 /**
  * A type for a listener function that handles a specific message type `T`.
  * This listener function accepts the message type and its arguments, enabling flexible processing.
+ * 
+ * @public
  */
 export type Listener<MessageMap extends MessageSchema> = (...args: ListenerArgs<MessageMap>) => void;
 
@@ -198,7 +231,11 @@ export type Listener<MessageMap extends MessageSchema> = (...args: ListenerArgs<
  * @param MessageMap - A map of message types and their corresponding request/response structures.
  *
  * @example
+ * ```ts
  * const listener: Listener<'message-type', MessageMap> = (...args) => { handle the request };
+ * ```
+ * 
+ * @public
  */
 export type TypeListener<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: Request<T, MessageMap>) => void;
 
@@ -206,8 +243,10 @@ export type TypeListener<T extends Type<MessageMap>, MessageMap extends MessageS
  * A string literal type used to enforce returning the result of `done()` in a handler.
  *
  * This is used to produce a compiler error if `done()` is called without `return`.
+ * 
+ * @public
  */
-type MustReturnFromDone = {
+export type MustReturnFromDone = {
     _$_$_: "You must call return done(<value>) in your setHandler callback."
 }
 
@@ -221,9 +260,11 @@ type MustReturnFromDone = {
  *
  * The return type of `done` is `MustReturnFromDone`, enforcing correct usage through TypeScript.
  *
- * @template MessageMap - A mapping of all message types and their request/response structures.
+ * @param MessageMap - A mapping of all message types and their request/response structures.
+ * 
+ * @public
  */
-type HandlerArgs<MessageMap extends MessageSchema> = {
+export type HandlerArgs<MessageMap extends MessageSchema> = {
     [T in keyof MessageMap]: MessageMap[T] extends { request: infer Request extends unknown[] }
     ? [type: T, args: Request, done: (value: MessageMap[T] extends { response: infer Response } ? Response : void) => MustReturnFromDone]
     : [type: T, args: [], done: (value: MessageMap[T] extends { response: infer Response } ? Response : void) => MustReturnFromDone]
@@ -237,14 +278,18 @@ type HandlerArgs<MessageMap extends MessageSchema> = {
  *
  * This pattern prevents unintentional continuation of control flow after calling `done`.
  *
- * @template MessageMap - A mapping of all message types and their request/response structures.
+ * @param MessageMap - A mapping of all message types and their request/response structures.
  *
  * @example
+ * ```ts
  * tp.setHandler((type, args, done) => {
  *   if (type === 'get-user') {
  *     return done({ id: 1, name: 'Alice' }); // ✅ Correct usage
  *   }
  * });
+ * ```
+ * 
+ * @public
  */
 export type Handler<MessageMap extends MessageSchema> = (...args: HandlerArgs<MessageMap>) => MustReturnFromDone | Promise<MustReturnFromDone>;
 
@@ -254,14 +299,21 @@ export type Handler<MessageMap extends MessageSchema> = (...args: HandlerArgs<Me
  *
  * @param T - The message type that this handler will process.
  * @param MessageMap - A map of message types and their corresponding request/response structures.
+ * 
+ * @public
  */
 export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSchema> = (...args: Request<T, MessageMap>) => Response<T, MessageMap> | Promise<Response<T, MessageMap>>;
 
+/**
+ * @public
+ */
 export type WellknownChannel = RTCDataChannel | WebSocket;
 
 /**
  * Class that handles message transportation with support for both sending and receiving messages.
  * Supports large message splitting and ensures message delivery in chunks.
+ * 
+ * @public
  */
 export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageMap extends MessageSchema> {
 
@@ -275,7 +327,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Sequence counter used to generate unique call IDs for each request.
      * This ensures that each request can be uniquely identified for proper response handling.
      */
-    #seq: JSBI = JSBI.BigInt(0);
+    readonly #seq: JSBI = JSBI.BigInt(0);
 
     /**
      * A generic handler that processes incoming messages. This handler is invoked when no specific handler
@@ -351,7 +403,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     /**
      * Processes partial messages that are sent in chunks. Reconstructs the message once all chunks are received.
      *
-     * @param message A partial message or a full message.
+     * @param message - A partial message or a full message.
      * @returns The reconstructed message if all chunks are received, or `undefined` if more chunks are expected.
      */
     #processPartialMessage(message: PartialSendInit | PartialSend | [MessageHeader<string>, ...MessageRequestType]): [MessageHeader<string>, ...MessageRequestType] | void {
@@ -398,15 +450,15 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     /**
      * Sends raw data over the channel, handling chunking if the data is large.
      *
-     * @param args The message and its parameters.
-     * @param callId The unique call ID for the message.
+     * @param args - The message and its parameters.
+     * @param callId - The unique call ID for the message.
      */
     #sendRaw(args: [MessageHeader<string>, ...MessageRequestType], callId?: CallId) {
         const data = compress(Buffer.from(this.#serializer.stringify(args)));
         const CHUNK_SIZE = 16 * 1024;
 
         if (data.byteLength <= CHUNK_SIZE) {
-            return this.#channel.send(data);
+            return this.#channel.send(data.buffer);
         }
 
         if (globalThis.RTCDataChannel && this.#channel instanceof RTCDataChannel) {
@@ -415,9 +467,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
 
         if (loggingEnabled()) console.log('large data', data.byteLength);
 
-        if (callId === undefined) {
-            callId = this.#generateCallId();
-        }
+        callId ??= this.#generateCallId();
 
         const init: PartialSendInit = {
             type: 'partial-send-init',
@@ -425,7 +475,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
             totalLength: data.byteLength,
         };
 
-        this.#channel.send(compress(Buffer.from(this.#serializer.stringify(init))));
+        this.#channel.send(compress(Buffer.from(this.#serializer.stringify(init))).buffer);
 
         let offset = 0;
         const sendChunk = () => {
@@ -438,7 +488,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
                     callId,
                     chunk
                 };
-                this.#channel.send(compress(Buffer.from(this.#serializer.stringify(partial))));
+                this.#channel.send(compress(Buffer.from(this.#serializer.stringify(partial))).buffer);
 
                 offset = end;
 
@@ -574,14 +624,6 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     get channel() {
         return this.#channel;
     }
-
-    /**
-     * Setter for the transport channel.
-     * This sets the transport channel to a new value and re-initializes the necessary internal state.
-     * The new channel can be a custom `TransportChannel`, a `WebSocket`, or an `RTCDataChannel`.
-     *
-     * @param newChannel - The new transport channel to set.
-     */
     set channel(newChannel: TransportChannel | WebSocket | RTCDataChannel) {
         this.#channel = newChannel;
         this.#initialize();
@@ -613,7 +655,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
     /**
      * Registers a generic handler for messages of any type that doesn't have a specific handler.
      *
-     * @param handler The handler to process the message.
+     * @param handler - The handler to process the message.
      */
     setHandler(handler: Handler<RecvMessageMap>): this;
 
@@ -622,8 +664,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      *
      * If a handler for the message type is not found, the generic handler will be called.
      *
-     * @param type The message type.
-     * @param handler The handler to process the message of that type.
+     * @param type - The message type.
+     * @param handler - The handler to process the message of that type.
      */
     setHandler<T extends Type<RecvMessageMap>>(type: T, handler: TypeHandler<T, RecvMessageMap>): this;
 
@@ -642,7 +684,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Registers a generic listener for all message types.
      * The listener will be called whenever any message is received.
      */
-    on<T extends Type<RecvMessageMap>>(listener: Listener<RecvMessageMap>): this;
+    on(listener: Listener<RecvMessageMap>): this;
 
     /**
      * Registers an event listener for the specified message type.
@@ -712,8 +754,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      *
      * This method ensures that the handler for the message type is prepared before sending the message.
      *
-     * @param type The message type.
-     * @param args The content of the message.
+     * @param type - The message type.
+     * @param args - The content of the message.
      */
     send<T extends Type<SendMessageMap>>(type: T, ...args: Request<T, SendMessageMap>) {
         this.waitUntilReady(type).then(() => this.#send(type, this.#generateCallId(), ...args));
@@ -723,8 +765,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Sends a message and waits for a response. It waits until the handler for the message type is ready
      * before sending the message and then returns the response once received.
      *
-     * @param type The message type.
-     * @param args The content of the message.
+     * @param type - The message type.
+     * @param args - The content of the message.
      * @returns A promise that resolves with the response message.
      */
     async sendAndWait<T extends Type<SendMessageMap>>(type: T, ...args: Request<T, SendMessageMap>) {
@@ -742,7 +784,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Waits until the handler for a specific message type is registered (ready).
      * If the handler is not ready, the method will wait for the handler to be registered.
      *
-     * @param type The message type.
+     * @param type - The message type.
      */
     async waitUntilReady<T extends Type<SendMessageMap>>(type: T) {
         if (this.isHandlerReady(type)) {
@@ -759,7 +801,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      *
      * This method checks if the handler for the given message type has been prepared.
      *
-     * @param type The message type.
+     * @param type - The message type.
      * @returns `true` if the handler is ready; otherwise, `false`.
      */
     isHandlerReady<T extends Type<SendMessageMap>>(type: T) {
@@ -771,8 +813,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      *
      * This method sends the message immediately without waiting for any handler to be ready.
      *
-     * @param type The message type.
-     * @param args The content of the message.
+     * @param type - The message type.
+     * @param args - The content of the message.
      */
     trySend<T extends Type<SendMessageMap>>(type: T, ...args: Request<T, SendMessageMap>) {
         this.#send(type, this.#generateCallId(), ...args);
@@ -782,8 +824,8 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
      * Attempts to send a message and waits for a response. If the handler is not prepared,
      * the method will not send the message and will return `undefined`.
      *
-     * @param type The message type.
-     * @param args The content of the message.
+     * @param type - The message type.
+     * @param args - The content of the message.
      * @returns A promise that resolves with the response message, or `undefined` if the handler is not prepared.
      */
     async trySendAndWait<T extends Type<SendMessageMap>>(type: T, ...args: Request<T, SendMessageMap>) {

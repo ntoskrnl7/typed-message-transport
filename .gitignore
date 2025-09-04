@@ -1,7 +1,10 @@
 /node_modules
+/types
 /dist
 
-*.js
-*.d.ts
+/*.js
+/*.d.ts
 
 !remove-export.js
+
+tsdoc-metadata.json
