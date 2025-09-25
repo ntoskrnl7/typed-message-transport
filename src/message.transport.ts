@@ -6,6 +6,16 @@ import SuperJSON from './superJSON';
 import JSBI from 'jsbi';
 
 /**
+ * A type that represents an empty message map.
+ * This is used to represent a message map that has no message types.
+ *
+ * @public
+ */
+export type EmptyMessageMap = {
+    never: { request: [] };
+};
+
+/**
  * Checks whether logging is enabled by looking up the `loggingEnabled` property
  * on the global object (`globalThis`).
  *
@@ -315,7 +325,7 @@ export type WellknownChannel = RTCDataChannel | WebSocket;
  * 
  * @public
  */
-export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageMap extends MessageSchema> {
+export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessageMap, RecvMessageMap extends MessageSchema = EmptyMessageMap> {
 
     /**
      * Internal channel used for communication, which can be a custom TransportChannel,
@@ -524,64 +534,68 @@ export class MessageTransport<SendMessageMap extends MessageSchema, RecvMessageM
             channel.binaryType = 'arraybuffer';
         }
         const onmessage = async (event: MessageEvent<ArrayBuffer>) => {
-            const message = this.#processPartialMessage(this.#serializer.parse(Buffer.from(uncompress(event.data)).toString()));
-            if (message) {
-                if (loggingEnabled()) console.assert(message.length !== 0, `invalid message : ${message}`);
-                if (message.length === 0) {
-                    return;
-                }
-                const type = message[0].type;
-                const callId = message[0].callId;
-                const args = message.slice(1);
-                try {
-                    if (type === 'handler-added') {
-                        const preparedType = args[0] as string;
-                        this.#preparedTypes.push(preparedType);
-                        this.#preparedTypesEmitter.emit(preparedType);
-                    } else if (type === 'rejection-error') {
-                        if (callId) {
-                            this.#rejectionEmitter.emit(callId, ...args);
-                        } else if (loggingEnabled()) {
-                            console.warn(`Rejection error message is invalid: 'callId' is missing`, message);
-                        }
-                    } else if (type) {
-                        // Triggers events that do not return results such as `on` or `once`
-                        this.#emitter.emit(type, ...args);
-
-                        if (this.#listener) {
-                            this.#listener(type, args);
-                        }
-
-                        // Calls the handler (handlers should return results and be called only once)
-                        const handler = this.#handlerMap.get(type)?.bind(this, ...args) ?? this.#handler?.bind(this, type, args, (response: unknown) => {
-                            throw { _$handler_response$_: response };
-                        });
-                        if (handler) {
-                            Promise.resolve().then(handler).then(response => {
-                                if (loggingEnabled()) console.log(type, callId, ...args, response);
-                                this.#sendRaw([{ callId }, response], callId);
-                            }).catch(reason => {
-                                if ('_$handler_response$_' in reason) {
-                                    if (loggingEnabled()) console.log(type, callId, ...args, reason._$handler_response$_);
-                                    this.#sendRaw([{ callId }, reason._$handler_response$_], callId);
-                                } else {
-                                    if (loggingEnabled()) console.warn(reason);
-                                    this.#sendRaw([{ type: 'rejection-error', callId }, reason], callId);
-                                }
-                            });
-                        }
-                    } else {
-                        if (loggingEnabled()) console.log(callId, ...args);
-                        if (callId) {
-                            this.#responseEmitter.emit(callId, ...args);
-                        } else if (loggingEnabled()) {
-                            console.warn(`Response message is invalid: 'callId' is missing`, message);
-                        }
+            try {
+                const message = this.#processPartialMessage(this.#serializer.parse(Buffer.from(uncompress(event.data)).toString()));
+                if (message) {
+                    if (loggingEnabled()) console.assert(message.length !== 0, `invalid message : ${message}`);
+                    if (message.length === 0) {
+                        return;
                     }
-                } catch (error) {
-                    if (loggingEnabled()) console.warn(error);
-                    this.#sendRaw([{ type: 'rejection-error', callId }, error], callId);
+                    const type = message[0].type;
+                    const callId = message[0].callId;
+                    const args = message.slice(1);
+                    try {
+                        if (type === 'handler-added') {
+                            const preparedType = args[0] as string;
+                            this.#preparedTypes.push(preparedType);
+                            this.#preparedTypesEmitter.emit(preparedType);
+                        } else if (type === 'rejection-error') {
+                            if (callId) {
+                                this.#rejectionEmitter.emit(callId, ...args);
+                            } else if (loggingEnabled()) {
+                                console.warn(`Rejection error message is invalid: 'callId' is missing`, message);
+                            }
+                        } else if (type) {
+                            // Triggers events that do not return results such as `on` or `once`
+                            this.#emitter.emit(type, ...args);
+
+                            if (this.#listener) {
+                                this.#listener(type, args);
+                            }
+
+                            // Calls the handler (handlers should return results and be called only once)
+                            const handler = this.#handlerMap.get(type)?.bind(this, ...args) ?? this.#handler?.bind(this, type, args, (response: unknown) => {
+                                throw { _$handler_response$_: response };
+                            });
+                            if (handler) {
+                                Promise.resolve().then(handler).then(response => {
+                                    if (loggingEnabled()) console.log(type, callId, ...args, response);
+                                    this.#sendRaw([{ callId }, response], callId);
+                                }).catch(reason => {
+                                    if ('_$handler_response$_' in reason) {
+                                        if (loggingEnabled()) console.log(type, callId, ...args, reason._$handler_response$_);
+                                        this.#sendRaw([{ callId }, reason._$handler_response$_], callId);
+                                    } else {
+                                        if (loggingEnabled()) console.warn(reason);
+                                        this.#sendRaw([{ type: 'rejection-error', callId }, reason], callId);
+                                    }
+                                });
+                            }
+                        } else {
+                            if (loggingEnabled()) console.log(callId, ...args);
+                            if (callId) {
+                                this.#responseEmitter.emit(callId, ...args);
+                            } else if (loggingEnabled()) {
+                                console.warn(`Response message is invalid: 'callId' is missing`, message);
+                            }
+                        }
+                    } catch (error) {
+                        if (loggingEnabled()) console.warn(error);
+                        this.#sendRaw([{ type: 'rejection-error', callId }, error], callId);
+                    }
+                    event.stopImmediatePropagation();
                 }
+            } catch {
             }
         };
         if ('onmessage' in channel) {

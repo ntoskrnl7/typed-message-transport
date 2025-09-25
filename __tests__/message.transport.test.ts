@@ -1,4 +1,4 @@
-import { MessageTransport, TransportChannel } from '..';
+import { EmptyMessageMap, MessageTransport, TransportChannel } from '..';
 import SuperJSON from '../superJSON';
 import { parse, stringify } from 'flatted';
 
@@ -63,6 +63,10 @@ describe('MessageTransport send', () => {
                 onMessage(onmessage) { port2.onmessage = onmessage; }
             });
 
+            const raw = new ArrayBuffer(100);
+            port1.addEventListener('message', event => expect((event.data instanceof ArrayBuffer && raw.byteLength === event.data.byteLength)).toBe(true));
+            port2.postMessage(raw);
+
             tp1.on((type, args) => {
                 switch (type) {
                     case 'test1-message':
@@ -91,7 +95,7 @@ describe('MessageTransport send', () => {
                 switch (type) {
                     case 'test1-message':
                     case 'test1-complex-message':
-                        fail('This function should not be called.')
+                        fail('This function should not be called.');
                         break;
                     case 'test2-message':
                         return done(args[0] + args[1]);
@@ -157,6 +161,25 @@ describe('MessageTransport send', () => {
             expect(await tp2.sendAndWait('test2-message', '12', '34')).toEqual('1234');
             await tp2.sendAndWait('test1-complex-message', 'type1', 'test');
             await tp2.sendAndWait('test1-complex-message', 'type2', 10, 20);
+        } finally {
+            port1.close();
+            port2.close();
+        }
+    });
+
+    it('should send a message and wait for a response using sendAndWait() with empty message map', async () => {
+        const { port1, port2 } = new MessageChannel();
+        try {
+            const tp1 = new MessageTransport<EmptyMessageMap, Test1MessageMap>({
+                send: MessagePort.prototype.postMessage.bind(port1),
+                onMessage: MessagePort.prototype.addEventListener.bind(port1, 'message')
+            } as TransportChannel);
+            const tp2 = new MessageTransport<Test1MessageMap/*, EmptyMessageMap*/>({
+                send(data: ArrayBuffer) { port2.postMessage(data); },
+                onMessage(onmessage) { port2.onmessage = onmessage; }
+            });
+            tp1.setHandler('test1-message', async () => ({ success: true }));
+            expect(await tp2.sendAndWait('test1-message', 'arg1', 'arg2')).toEqual({ success: true });
         } finally {
             port1.close();
             port2.close();
