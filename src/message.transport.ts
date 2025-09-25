@@ -416,7 +416,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
      * @param message - A partial message or a full message.
      * @returns The reconstructed message if all chunks are received, or `undefined` if more chunks are expected.
      */
-    #processPartialMessage(message: PartialSendInit | PartialSend | [MessageHeader<string>, ...MessageRequestType]): [MessageHeader<string>, ...MessageRequestType] | void {
+    #processPartialMessage(message: PartialSendInit | PartialSend | [MessageHeader<string>, ...MessageRequestType]): [MessageHeader<string>, ...MessageRequestType] | 'partial-message' {
         if (Array.isArray(message)) {
             return message;
         }
@@ -452,7 +452,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
                     }
                 }
             }
-            return;
+            return 'partial-message';
         }
         return message as unknown as [MessageHeader<string>, ...MessageRequestType];
     }
@@ -536,9 +536,12 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
         const onmessage = async (event: MessageEvent<ArrayBuffer>) => {
             try {
                 const message = this.#processPartialMessage(this.#serializer.parse(Buffer.from(uncompress(event.data)).toString()));
-                if (message) {
+                if (message === 'partial-message') {
+                    event.stopImmediatePropagation();
+                } else {
                     if (loggingEnabled()) console.assert(message.length !== 0, `invalid message : ${message}`);
                     if (message.length === 0) {
+                        event.stopImmediatePropagation();
                         return;
                     }
                     const type = message[0].type;
@@ -585,8 +588,9 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
                             if (loggingEnabled()) console.log(callId, ...args);
                             if (callId) {
                                 this.#responseEmitter.emit(callId, ...args);
-                            } else if (loggingEnabled()) {
-                                console.warn(`Response message is invalid: 'callId' is missing`, message);
+                            } else {
+                                if (loggingEnabled()) console.warn(`Response message is invalid: 'callId' is missing`, message);
+                                event.stopImmediatePropagation();
                             }
                         }
                     } catch (error) {
