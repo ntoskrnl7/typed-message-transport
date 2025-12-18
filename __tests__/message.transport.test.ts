@@ -1,5 +1,5 @@
 import { EmptyMessageMap, MessageTransport, TransportChannel } from '..';
-import SuperJSON from '../superJSON';
+import { SuperJSON } from '../superJSON';
 import { parse, stringify } from 'flatted';
 
 const Flatted = { parse, stringify };
@@ -10,7 +10,7 @@ type Test1MessageMap = {
         response: { success: boolean };
     };
     'test1-complex-message': {
-        request: [type: 'type1', b: string];
+        request: [type: 'type1', b: undefined, c: string];
         response: { success: boolean };
     } | {
         request: [type: 'type2', b: number, c: number];
@@ -76,7 +76,8 @@ describe('MessageTransport send', () => {
                     case 'test1-complex-message':
                         switch (args[0]) {
                             case 'type1':
-                                expect(args[1]).toEqual('test');
+                                expect(args[1]).toBeUndefined();
+                                expect(args[2]).toEqual('test');
                                 return { success: true }
                             case 'type2':
                                 expect(args[1]).toEqual(10);
@@ -110,7 +111,8 @@ describe('MessageTransport send', () => {
             tp1.setHandler('test1-complex-message', (type, ...args) => {
                 switch (type) {
                     case 'type1':
-                        expect(args[0]).toEqual('test');
+                        expect(args[0]).toBeUndefined();
+                        expect(args[1]).toEqual('test');
                         return { success: true }
                     case 'type2':
                         expect(args[0]).toEqual(10);
@@ -118,13 +120,6 @@ describe('MessageTransport send', () => {
                         return;
                 }
             });
-            //tp1.setHandler('test2-message', (a, b) => a + b);
-
-            // tp2.setHandler('test2-message', (a, b) => {
-            //     expect(a).toEqual(10);
-            //     expect(b).toEqual(20);
-            // });
-            // tp2.setHandler('test2-message-2', () => 1234);
 
             tp2.on((type, args) => {
                 switch (type) {
@@ -140,6 +135,13 @@ describe('MessageTransport send', () => {
                 }
             });
 
+            tp2.setHandler('test2-message', (a, b) => {
+                fail('This function should not be called.');
+                expect(a).toEqual(10);
+                expect(b).toEqual(20);
+            });
+            tp2.setHandler('test2-message-2', () => 1234);
+
             tp2.setHandler((type, args, done) => {
                 switch (type) {
                     case 'test2-message':
@@ -153,13 +155,14 @@ describe('MessageTransport send', () => {
                         return done(1234);
                 }
             });
+            tp2.deleteHandler('test2-message');
 
             await tp1.sendAndWait('test2-message', 10, 20);
             expect(await tp1.sendAndWait('test2-message-2')).toEqual(1234);
 
             await tp2.sendAndWait('test1-message', 'arg1', 'arg2');
             expect(await tp2.sendAndWait('test2-message', '12', '34')).toEqual('1234');
-            await tp2.sendAndWait('test1-complex-message', 'type1', 'test');
+            await tp2.sendAndWait('test1-complex-message', 'type1', undefined, 'test');
             await tp2.sendAndWait('test1-complex-message', 'type2', 10, 20);
         } finally {
             port1.close();

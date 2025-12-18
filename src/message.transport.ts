@@ -1,9 +1,7 @@
-import EventEmitter from "events";
-import { compress, uncompress } from 'snappyjs';
-import { Buffer } from 'buffer/';
-import SuperJSON from './superJSON';
-
+import EventEmitter from "events"; // NOSONAR: Intentionally using `events` for compatibility with both browser and Node.js runtimes.
 import JSBI from 'jsbi';
+import { compress, uncompress } from 'snappyjs';
+import SuperJSON from './superJSON';
 
 /**
  * A type that represents an empty message map.
@@ -27,6 +25,12 @@ export type EmptyMessageMap = {
  */
 function loggingEnabled(): boolean {
     return globalThis.loggingEnabled;
+}
+
+function console<T extends 'assert' | 'info' | 'warn' | 'error' | 'debug'>(type: T, ...args: Parameters<typeof globalThis.console[T]>) {
+    if (loggingEnabled()) {
+        globalThis.console[type](...args);
+    }
 }
 
 /**
@@ -54,6 +58,7 @@ export type MessageHeader<T extends string> = {
  * to specify the total length of the data being sent in chunks.
  */
 type PartialSendInit = MessageHeader<'partial-send-init'> & {
+    callId: CallId;
     totalLength: number;  // Total length of the data being sent in chunks
 };
 
@@ -62,6 +67,7 @@ type PartialSendInit = MessageHeader<'partial-send-init'> & {
  * being sent as part of a larger message.
  */
 type PartialSend = MessageHeader<'partial-send'> & {
+    callId: CallId;
     chunk: Uint8Array;  // The data chunk being sent as part of a larger message
 };
 
@@ -112,33 +118,6 @@ export interface TransportChannel {
 }
 
 /**
- * Represents the expected types for request arguments in a message schema.
- *
- * - Each element in the array can be either `unknown` or `undefined`.
- * - `unknown` allows any type, making it flexible to accept various argument types.
- * - `undefined` indicates that an argument may be optional or not provided.
- *
- * This array type enables flexibility in defining the arguments for each message type.
- * 
- * @public
- */
-export type MessageRequestType = (unknown | undefined)[];
-
-/**
- * Represents the possible types for a response value in a message schema.
- *
- * - `unknown`: Allows any type, providing flexibility for various response types.
- * - `void`: Indicates that no response is expected for certain message types.
- * - `undefined`: Specifies that a response may be optional or not defined.
- *
- * This type union allows the flexibility needed to represent different response scenarios
- * within the message schema.
- * 
- * @public
- */
-export type MessageResponseType = unknown | void | undefined;
-
-/**
  * Defines the schema for messages exchanged between client and server.
  * The schema specifies the expected structure of requests and responses for each message type.
  *
@@ -161,10 +140,37 @@ export type MessageResponseType = unknown | void | undefined;
  */
 export type MessageSchema = {
     [key: string]: {
-        request?: MessageRequestType;     // Arguments expected in the request for this message type
-        response?: MessageResponseType;  // Expected response type for this message type
+        request?: unknown[]; // Arguments expected in the request for this message type
+        response?: unknown;  // Expected response type for this message type
     };
 };
+
+/**
+ * Represents the expected types for request arguments in a message schema.
+ *
+ * - Each element in the array can be either `unknown` or `undefined`.
+ * - `unknown` allows any type, making it flexible to accept various argument types.
+ * - `undefined` indicates that an argument may be optional or not provided.
+ *
+ * This array type enables flexibility in defining the arguments for each message type.
+ * 
+ * @public
+ */
+export type MessageRequestType = NonNullable<MessageSchema['']['request']>;
+
+/**
+ * Represents the possible types for a response value in a message schema.
+ *
+ * - `unknown`: Allows any type, providing flexibility for various response types.
+ * - `void`: Indicates that no response is expected for certain message types.
+ * - `undefined`: Specifies that a response may be optional or not defined.
+ *
+ * This type union allows the flexibility needed to represent different response scenarios
+ * within the message schema.
+ * 
+ * @public
+ */
+export type MessageResponseType = MessageSchema['']['response'];
 
 /**
  * A type that represents the keys of the `MessageMap` excluding `number` and `symbol` types.
@@ -319,6 +325,9 @@ export type TypeHandler<T extends Type<MessageMap>, MessageMap extends MessageSc
  */
 export type WellknownChannel = RTCDataChannel | WebSocket;
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 /**
  * Class that handles message transportation with support for both sending and receiving messages.
  * Supports large message splitting and ensures message delivery in chunks.
@@ -421,35 +430,30 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
             return message;
         }
         const { type, callId } = message;
-        if (callId && type?.startsWith('partial-send')) {
-            if (message.type === 'partial-send-init') {
-                this.#partialMessageMap.set(callId, {
-                    totalLength: message.totalLength,
-                    receivedLength: 0,
-                    chunks: [],
-                });
-            } else if (type === 'partial-send') {
-                const entry = this.#partialMessageMap.get(callId);
-                if (entry) {
-                    const chunk = Buffer.from(message.chunk);
-                    entry.chunks.push(chunk);
-                    entry.receivedLength += chunk.byteLength;
-                    if (loggingEnabled()) console.log(`[${callId}] chunk: ${chunk.byteLength}, progress: ${entry.receivedLength}/${entry.totalLength}`);
-
-                    if (entry.receivedLength === entry.totalLength) {
-                        const fullData = new Uint8Array(entry.totalLength);
-                        let offset = 0;
-                        for (const chunk of entry.chunks) {
-                            fullData.set(chunk, offset);
-                            offset += chunk.byteLength;
-                        }
-
-                        if (loggingEnabled()) console.log(`[${callId}] Full data received`);
-
-                        this.#partialMessageMap.delete(callId);
-
-                        return this.#serializer.parse(Buffer.from(uncompress(Buffer.from(fullData))).toString());
+        if (type === 'partial-send-init') {
+            this.#partialMessageMap.set(callId, {
+                totalLength: message.totalLength,
+                receivedLength: 0,
+                chunks: [],
+            });
+            return 'partial-message';
+        } else if (type === 'partial-send') {
+            const entry = this.#partialMessageMap.get(callId);
+            if (entry) {
+                const chunk = message.chunk;
+                entry.chunks.push(chunk);
+                entry.receivedLength += chunk.byteLength;
+                console('debug', `[${callId}] chunk: ${chunk.byteLength}, progress: ${entry.receivedLength}/${entry.totalLength}`);
+                if (entry.receivedLength === entry.totalLength) {
+                    const fullData = new Uint8Array(entry.totalLength);
+                    let offset = 0;
+                    for (const chunk of entry.chunks) {
+                        fullData.set(chunk, offset);
+                        offset += chunk.byteLength;
                     }
+                    console('debug', `[${callId}] Full data received`);
+                    this.#partialMessageMap.delete(callId);
+                    return this.#serializer.parse(uncompress(fullData).toString());
                 }
             }
             return 'partial-message';
@@ -464,7 +468,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
      * @param callId - The unique call ID for the message.
      */
     #sendRaw(args: [MessageHeader<string>, ...MessageRequestType], callId?: CallId) {
-        const data = compress(Buffer.from(this.#serializer.stringify(args)));
+        const data = compress(encoder.encode(this.#serializer.stringify(args)));
         const CHUNK_SIZE = 16 * 1024;
 
         if (data.byteLength <= CHUNK_SIZE) {
@@ -475,7 +479,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
             this.#channel.bufferedAmountLowThreshold = CHUNK_SIZE;
         }
 
-        if (loggingEnabled()) console.log('large data', data.byteLength);
+        console('debug', 'large data', data.byteLength);
 
         callId ??= this.#generateCallId();
 
@@ -485,11 +489,11 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
             totalLength: data.byteLength,
         };
 
-        this.#channel.send(compress(Buffer.from(this.#serializer.stringify(init))).buffer);
+        this.#channel.send(compress(encoder.encode(this.#serializer.stringify(init))).buffer);
 
         let offset = 0;
         const sendChunk = () => {
-            if (loggingEnabled()) console.log(offset, data.byteLength, this);
+            console('debug', 'send:', offset, data.byteLength, this);
             if (offset < data.byteLength) {
                 const end = Math.min(offset + CHUNK_SIZE, data.byteLength);
                 const chunk = data.slice(offset, end);
@@ -498,12 +502,12 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
                     callId,
                     chunk
                 };
-                this.#channel.send(compress(Buffer.from(this.#serializer.stringify(partial))).buffer);
+                this.#channel.send(compress(encoder.encode(this.#serializer.stringify(partial))).buffer);
 
                 offset = end;
 
                 if ('bufferedAmount' in this.#channel && this.#channel.bufferedAmount > CHUNK_SIZE) {
-                    if (loggingEnabled()) console.log(`bufferedAmount: ${this.#channel.bufferedAmount}`);
+                    console('debug', `bufferedAmount: ${this.#channel.bufferedAmount}`);
                     if (globalThis.RTCDataChannel && this.#channel instanceof RTCDataChannel) {
                         this.#channel.addEventListener('bufferedamountlow', sendChunk, { once: true });
                     } else {
@@ -516,7 +520,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
                         });
                     }
                 } else {
-                    if (loggingEnabled()) console.log('send');
+                    console('debug', 'send');
                     sendChunk();
                 }
             }
@@ -535,70 +539,57 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
         }
         const onmessage = async (event: MessageEvent<ArrayBuffer>) => {
             try {
-                const message = this.#processPartialMessage(this.#serializer.parse(Buffer.from(uncompress(event.data)).toString()));
-                if (message === 'partial-message') {
-                    event.stopImmediatePropagation();
-                } else {
-                    if (loggingEnabled()) console.assert(message.length !== 0, `invalid message : ${message}`);
-                    if (message.length === 0) {
-                        event.stopImmediatePropagation();
-                        return;
-                    }
+                const message = this.#processPartialMessage(this.#serializer.parse(decoder.decode(uncompress(event.data))));
+                if (message !== 'partial-message' && message.length) {
                     const type = message[0].type;
                     const callId = message[0].callId;
                     const args = message.slice(1);
                     try {
-                        if (type === 'handler-added') {
+                        if (type === '$tmt$handler-added') {
                             const preparedType = args[0] as string;
                             this.#preparedTypes.push(preparedType);
                             this.#preparedTypesEmitter.emit(preparedType);
-                        } else if (type === 'rejection-error') {
-                            if (callId) {
-                                this.#rejectionEmitter.emit(callId, ...args);
-                            } else if (loggingEnabled()) {
-                                console.warn(`Rejection error message is invalid: 'callId' is missing`, message);
-                            }
+                        } else if (type === '$tmt$handler-deleted') {
+                            const idx = this.#preparedTypes.indexOf(args[0] as string);
+                            if (idx !== -1) this.#preparedTypes.splice(idx, 1);
+                        } else if (type === '$tmt$rejection-error' && callId) {
+                            this.#rejectionEmitter.emit(callId, ...args);
                         } else if (type) {
                             // Triggers events that do not return results such as `on` or `once`
                             this.#emitter.emit(type, ...args);
+                            this.#listener?.(type, args);
 
-                            if (this.#listener) {
-                                this.#listener(type, args);
-                            }
-
-                            // Calls the handler (handlers should return results and be called only once)
-                            const handler = this.#handlerMap.get(type)?.bind(this, ...args) ?? this.#handler?.bind(this, type, args, (response: unknown) => {
-                                throw { _$handler_response$_: response };
-                            });
-                            if (handler) {
-                                Promise.resolve().then(handler).then(response => {
-                                    if (loggingEnabled()) console.log(type, callId, ...args, response);
-                                    this.#sendRaw([{ callId }, response], callId);
-                                }).catch(reason => {
-                                    if ('_$handler_response$_' in reason) {
-                                        if (loggingEnabled()) console.log(type, callId, ...args, reason._$handler_response$_);
-                                        this.#sendRaw([{ callId }, reason._$handler_response$_], callId);
-                                    } else {
-                                        if (loggingEnabled()) console.warn(reason);
-                                        this.#sendRaw([{ type: 'rejection-error', callId }, reason], callId);
+                            const noHandler = {};
+                            new Promise((resolve, reject) => {
+                                try {
+                                    const handler = this.#handlerMap.get(type)?.bind(this, ...args) ?? this.#handler?.bind(this, type, args, resolve);
+                                    if (handler) {
+                                        return resolve(handler());
                                     }
-                                });
-                            }
-                        } else {
-                            if (loggingEnabled()) console.log(callId, ...args);
-                            if (callId) {
-                                this.#responseEmitter.emit(callId, ...args);
-                            } else {
-                                if (loggingEnabled()) console.warn(`Response message is invalid: 'callId' is missing`, message);
-                                event.stopImmediatePropagation();
-                            }
+                                    resolve(noHandler);
+                                } catch (error) {
+                                    reject(error);
+                                }
+                            }).then(response => {
+                                if (response === noHandler) {
+                                    return;
+                                }
+                                console('debug', type, callId, ...args, response);
+                                this.#sendRaw([{ callId }, response], callId);
+                            }).catch(error => {
+                                console('warn', error);
+                                this.#sendRaw([{ type: '$tmt$rejection-error', callId }, error], callId);
+                            });
+                        } else if (callId) {
+                            console('debug', callId, ...args);
+                            this.#responseEmitter.emit(callId, ...args);
                         }
                     } catch (error) {
-                        if (loggingEnabled()) console.warn(error);
-                        this.#sendRaw([{ type: 'rejection-error', callId }, error], callId);
+                        console('warn', error);
+                        this.#sendRaw([{ type: '$tmt$rejection-error', callId }, error], callId);
                     }
-                    event.stopImmediatePropagation();
                 }
+                event.stopImmediatePropagation();
             } catch {
             }
         };
@@ -690,13 +681,31 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
     setHandler<T extends Type<RecvMessageMap>>(typeOrHandler: T | Handler<RecvMessageMap>, handler: TypeHandler<T, RecvMessageMap> | void) {
         if (typeof typeOrHandler === 'function') {
             this.#handler = typeOrHandler as unknown as (...args: MessageRequestType) => Promise<MessageResponseType>;
-            this.#sendRaw([{ type: 'handler-added' }, '*']);
+            this.#sendRaw([{ type: '$tmt$handler-added' }, '*']);
         } else {
             this.#handlerMap.set(typeOrHandler as string, handler as (...args: MessageRequestType) => Promise<MessageResponseType>);
-            this.#sendRaw([{ type: 'handler-added' }, typeOrHandler as string]);
+            this.#sendRaw([{ type: '$tmt$handler-added' }, typeOrHandler as string]);
         }
         return this;
     }
+
+    /**
+     * Unregisters a handler for a specific message type.
+     *
+     * @param type - The message type.
+     */
+    deleteHandler<T extends Type<RecvMessageMap>>(type: T | '*'): this {
+        if (type === '*') {
+            this.#handler = undefined;
+        } else {
+            this.#handlerMap.delete(type);
+        }
+        try {
+            this.#sendRaw([{ type: '$tmt$handler-deleted' }, type]);
+        } catch {
+        }
+        return this;
+    };
 
     /**
      * Registers a generic listener for all message types.
@@ -718,10 +727,10 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
     on<T extends Type<RecvMessageMap>>(typeOrListener: T | Listener<RecvMessageMap>, listener: TypeListener<T, RecvMessageMap> | void) {
         if (typeof typeOrListener === 'function') {
             this.#listener = typeOrListener as (...args: MessageRequestType) => void;
-            this.#sendRaw([{ type: 'handler-added' }, '*']);
+            this.#sendRaw([{ type: '$tmt$handler-added' }, '*']);
         } else {
-            this.#emitter.on(typeOrListener as string, listener as (...args: MessageRequestType) => void);
-            this.#sendRaw([{ type: 'handler-added' }, typeOrListener as string]);
+            this.#emitter.on(typeOrListener as string, listener as (...args: Request<T, RecvMessageMap>) => void);
+            this.#sendRaw([{ type: '$tmt$handler-added' }, typeOrListener as string]);
         }
         return this;
     }
@@ -736,8 +745,14 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
      * @returns The current instance of `MessageTransport` for method chaining.
      */
     once<T extends Type<RecvMessageMap>>(type: T, listener: TypeListener<T, RecvMessageMap>) {
-        this.#emitter.once(type as string, listener as (...args: MessageRequestType) => void);
-        this.#sendRaw([{ type: 'handler-added' }, type as string]);
+        this.#emitter.once(type as string, (...args: Request<T, RecvMessageMap>) => {
+            try {
+                this.#sendRaw([{ type: '$tmt$handler-deleted' }, type]);
+            } catch {
+            }
+            listener(...args);
+        });
+        this.#sendRaw([{ type: '$tmt$handler-added' }, type as string]);
         return this;
     }
 
@@ -751,6 +766,10 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
      */
     off<T extends Type<RecvMessageMap>>(type: T, listener: TypeListener<T, RecvMessageMap>) {
         this.#emitter.off(type as string, listener as (...args: MessageRequestType) => void);
+        try {
+            this.#sendRaw([{ type: '$tmt$handler-deleted' }, type]);
+        } catch {
+        }
         return this;
     }
 
