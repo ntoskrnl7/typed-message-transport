@@ -453,7 +453,7 @@ export class MessageTransport<SendMessageMap extends MessageSchema = EmptyMessag
                     }
                     console('debug', `[${callId}] Full data received`);
                     this.#partialMessageMap.delete(callId);
-                    return this.#serializer.parse(uncompress(fullData).toString());
+                    return this.#serializer.parse(decoder.decode(uncompress(fullData)));
                 }
             }
             return 'partial-message';

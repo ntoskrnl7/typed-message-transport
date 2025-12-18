@@ -1,6 +1,6 @@
 {
   "name": "typed-message-transport",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "scripts": {
     "lint:es": "eslint src/*.ts",
     "lint:ox": "oxlint ./src",
